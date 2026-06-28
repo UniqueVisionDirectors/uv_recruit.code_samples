@@ -824,15 +824,15 @@ git commit -m "docs: scaffold VitePress tutorial site (nav + mermaid)"
 
 **Interfaces:** Produces: 設計書 §6.1 の7章。各章はコピペ可能な手順、curl、Swagger 誘導、Mermaid 図を含む。
 
-- [ ] **Step 1: 01 イントロ / Webの基本構成**（Mermaid で stage1=LBなし / stage2=LB登場の対比図）。
-- [ ] **Step 2: 02 環境を立ち上げる**（`docker compose up`、各URL: API `/docs`・web 5173・runner 9000・docs 5174）。
-- [ ] **Step 3: 03 APIに触れる**（Swagger `/docs` の Try it out ＋ 同等 curl: `curl -X POST localhost:8000/users -H 'Content-Type: application/json' -d '{"name":"alice"}'` と `curl localhost:8000/users`）。
-- [ ] **Step 4: 04 ステージ1**（`ProblemIssuer.issue` 穴埋め要件、web 単発発行、`pytest tests/test_idgen_problem.py`）。
-- [ ] **Step 5: 05 衝突を観測**（demo スタック起動、web のジョブで並列1→100→1000、ジョブ詳細の `conflict_count`、鳩の巣の定量説明＝設計書第5章を引用）。
-- [ ] **Step 6: 06 ステージ2**（worker-id 修正、再観測で 0、解答例 API との対比）。
-- [ ] **Step 7: 07 付録**（IDビット構造の図、設計判断、トラブルシュート）。
-- [ ] **Step 8: 実機確認**（各章のコマンドを実際に1度なぞって通ることを確認）。
-- [ ] **Step 9: コミット**
+- [x] **Step 1: 01 イントロ / Webの基本構成**（Mermaid で stage1=LBなし / stage2=LB登場の対比図）。
+- [x] **Step 2: 02 環境を立ち上げる**（ファイル名は `/02-setup` でサイドバーに整合）（`docker compose up`、各URL: API `/docs`・web 5173・runner 9000・docs 5174）。
+- [x] **Step 3: 03 APIに触れる**（Swagger `/docs` の Try it out ＋ 同等 curl: `curl -X POST localhost:8000/users -H 'Content-Type: application/json' -d '{"name":"alice"}'` と `curl localhost:8000/users`）。
+- [x] **Step 4: 04 ステージ1**（`ProblemIssuer.issue` 穴埋め要件、web 単発発行、`pytest tests/test_idgen_problem.py`）。
+- [x] **Step 5: 05 衝突を観測**（実機衝突は負荷依存と明記＋決定的証明 test_idgen_collision.py を引用）（demo スタック起動、web のジョブで並列1→100→1000、ジョブ詳細の `conflict_count`、鳩の巣の定量説明＝設計書第5章を引用）。
+- [x] **Step 6: 06 ステージ2**（worker-id 修正、再観測で 0、解答例 API との対比）。
+- [x] **Step 7: 07 付録**（IDビット構造の図、設計判断、トラブルシュート）。
+- [x] **Step 8: 実機確認**（docs:build 成功・curl スポット確認）（各章のコマンドを実際に1度なぞって通ることを確認）。
+- [x] **Step 9: コミット**
 
 ```bash
 git add docs/tutorial
