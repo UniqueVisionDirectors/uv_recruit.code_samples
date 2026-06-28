@@ -7,7 +7,14 @@ from app.idgen.factory import build_issuer
 
 
 def create_app(issuer: IdIssuer) -> FastAPI:
-    application = FastAPI(title="uv_recruit user-id API")
+    application = FastAPI(
+        title="ユーザーID発行API（教材）",
+        description=(
+            "発行順ソート可能な base62 10文字 ID を払い出す教材用 API。"
+            "/docs の Try it out から実際に発行できる。"
+        ),
+        version="0.2.0",
+    )
     application.state.issuer = issuer
     application.include_router(routes_health.router)
     application.include_router(routes_user.router)

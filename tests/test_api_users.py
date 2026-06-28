@@ -53,3 +53,11 @@ async def test_list_users_returns_sorted(client):
     assert len(body) == 3
     ids = [u["id"] for u in body]
     assert ids == sorted(ids)  # 発行順＝ソート順
+
+
+async def test_openapi_declares_conflict_and_examples(client):
+    schema = (await client.get("/openapi.json")).json()
+    post = schema["paths"]["/users"]["post"]
+    assert "409" in post["responses"]  # 衝突が宣言されている
+    user_create = schema["components"]["schemas"]["UserCreate"]
+    assert "example" in user_create or "examples" in str(user_create)

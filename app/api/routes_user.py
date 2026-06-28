@@ -26,7 +26,15 @@ async def list_users(
     return [UserRead.model_validate(u, from_attributes=True) for u in users]
 
 
-@router.post("", response_model=UserRead, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=UserRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="ユーザーを作成しIDを発行",
+    responses={
+        409: {"description": "ID 衝突（アプリ側ロジックが一意でない場合に発生）"}
+    },
+)
 async def create_user(
     data: UserCreate,
     session: AsyncSession = Depends(get_session),
