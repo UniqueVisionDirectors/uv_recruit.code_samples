@@ -41,3 +41,15 @@ async def test_ids_are_sorted_by_issue_order(client):
     clock["ms"] = 10
     second = (await client.post("/users", json={"name": "b"})).json()["id"]
     assert first < second
+
+
+async def test_list_users_returns_sorted(client):
+    _install_issuer()
+    for name in ["a", "b", "c"]:
+        await client.post("/users", json={"name": name})
+    resp = await client.get("/users?limit=10&offset=0")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body) == 3
+    ids = [u["id"] for u in body]
+    assert ids == sorted(ids)  # 発行順＝ソート順

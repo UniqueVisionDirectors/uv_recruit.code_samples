@@ -16,6 +16,16 @@ def get_issuer(request: Request) -> IdIssuer:
     return cast(IdIssuer, request.app.state.issuer)
 
 
+@router.get("", response_model=list[UserRead])
+async def list_users(
+    limit: int = 100,
+    offset: int = 0,
+    session: AsyncSession = Depends(get_session),
+) -> list[UserRead]:
+    users = await crud.list_users(session, limit=limit, offset=offset)
+    return [UserRead.model_validate(u, from_attributes=True) for u in users]
+
+
 @router.post("", response_model=UserRead, status_code=status.HTTP_201_CREATED)
 async def create_user(
     data: UserCreate,
