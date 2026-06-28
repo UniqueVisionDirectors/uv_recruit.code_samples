@@ -29,30 +29,56 @@ async function launch(): Promise<void> {
 </script>
 
 <template>
-  <section class="job-launcher">
+  <section class="card job-launcher">
     <h2>ジョブ起動</h2>
-    <form @submit.prevent="launch">
-      <label>
-        ターゲット
+    <p class="hint">大量のID発行を並列で実行し、衝突回数（conflict_count）を観測します。</p>
+    <form class="launch-form" @submit.prevent="launch">
+      <label class="field">
+        <span>ターゲット</span>
         <select v-model="target" :disabled="loading">
           <option value="http://app:8000">app</option>
           <option value="http://lb:8080">lb</option>
         </select>
       </label>
-      <label>
-        N
+      <label class="field">
+        <span>N（件数）</span>
         <input v-model.number="n" type="number" min="1" :disabled="loading" />
       </label>
-      <label>
-        並列度
+      <label class="field">
+        <span>並列度</span>
         <select v-model.number="concurrency" :disabled="loading">
           <option :value="1">1</option>
           <option :value="100">100</option>
           <option :value="1000">1000</option>
         </select>
       </label>
-      <button type="submit" :disabled="loading">起動</button>
+      <button class="btn btn--primary" type="submit" :disabled="loading">
+        {{ loading ? '起動中…' : '起動' }}
+      </button>
     </form>
-    <p v-if="error" class="error-msg">{{ error }}</p>
+    <p v-if="error" class="error-msg" role="alert">{{ error }}</p>
   </section>
 </template>
+
+<style scoped>
+.hint {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  margin-bottom: var(--space-4);
+}
+
+.launch-form {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.launch-form .field {
+  flex: 1 1 140px;
+}
+
+.error-msg {
+  margin-top: var(--space-3);
+}
+</style>
