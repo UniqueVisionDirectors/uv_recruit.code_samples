@@ -4,6 +4,13 @@ hero:
   name: "ユーザーID発行API 教材"
   text: "衝突を体験しながら学ぶ分散ID設計"
   tagline: "競合状態・リトライ・ステージ進化を手を動かして理解する"
+  actions:
+    - theme: brand
+      text: チュートリアルを始める →
+      link: /01-intro
+    - theme: alt
+      text: 環境を立ち上げる
+      link: /02-setup
 ---
 
 ## このチュートリアルについて
