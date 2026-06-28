@@ -65,6 +65,17 @@ migrations/ Alembic マイグレーション
 tests/      pytest テスト
 ```
 
+## VS Code 開発（Dev Containers）
+
+1. VS Code に「Dev Containers」拡張（`ms-vscode-remote.remote-containers`）を入れる。
+2. このフォルダを開き、コマンドパレットから **Dev Containers: Reopen in Container** を実行。
+3. コンテナ内 `/app/.venv` を参照して補完・型チェック（mypy）・lint（Ruff）が効く。保存時に自動整形される。
+4. デバッグ実行: 実行とデバッグから **FastAPI (uvicorn)** を起動（ブレークポイント可）。
+5. タスク: コマンドパレットの **Tasks: Run Task** から lint / format / typecheck / test を実行。
+
+> Dev Containers 内ではアプリは自動起動しない（デバッグ起動用にポート 8000 を空けるため）。
+> コンテナ外からの `docker compose up` はこれまで通り uvicorn を自動起動する。
+
 ## 注意（本番運用に向けて）
 
 このリポジトリは「Docker だけで開発を完結させる」ことを目的とした開発用構成です。
