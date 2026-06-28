@@ -1,10 +1,10 @@
-# uv_recruit code samples — FastAPI + PostgreSQL (Docker)
+# uv_recruit code samples — ユーザーID発行API 教材
 
-Docker だけで起動・開発できる FastAPI サンプル API。
+ユーザーID発行API（FastAPI + PostgreSQL）の実装・衝突可視化・負荷ランナー・7章チュートリアルをまとめた教材リポジトリ。
 
 ## 必要なもの
 
-- Docker / Docker Compose のみ（ローカルに Python・uv は不要）
+- Docker / Docker Compose のみ（ローカルに Python・Rust・Node は不要）
 
 ## 起動
 
@@ -13,68 +13,69 @@ cp .env.example .env   # 任意
 docker compose up --build
 ```
 
-- API: http://localhost:8000
-- OpenAPI ドキュメント: http://localhost:8000/docs
-- ヘルスチェック: http://localhost:8000/health
+| サービス | URL | 説明 |
+|---|---|---|
+| API (app) | http://localhost:8000 | ユーザーID発行API |
+| Swagger | http://localhost:8000/docs | OpenAPI ドキュメント |
+| web (可視化) | http://localhost:5173 | 単一発行UI + 負荷ジョブ操作 |
+| runner (負荷ランナー) | http://localhost:9000/healthz | Rust 非同期負荷ランナー |
+| docs (チュートリアル) | http://localhost:5174 | 7章チュートリアルサイト |
+| solution (解答例) | http://localhost:8001/docs | stage2 実装を直接確認 |
 
-## エンドポイント
+## チュートリアル
+
+**学習パスの全詳細は http://localhost:5174 の7章チュートリアルを参照。**
+
+1. イントロ — 教材の概要と目的
+2. セットアップ — Docker 起動・動作確認
+3. API仕様 — エンドポイント解説
+4. Stage 1 — ID発行ロジックの実装
+5. 衝突の観察 — 負荷ランナー + WebUIで衝突を体感
+6. Stage 2 — 並列衝突を防ぐ修正
+7. 付録 — 設計背景・参考資料
+
+> `scripts/collision_demo.py` + `compose.demo.yaml` による旧来のCLI確認も引き続き使用可能。
+
+## エンドポイント（app）
 
 | メソッド | パス | 説明 |
 |---|---|---|
 | GET | `/health` | 稼働 + DB 接続確認 |
-| POST | `/users` | ユーザー作成（ID を自動発行、201 / 衝突時 409） |
+| POST | `/users` | ユーザー作成（201 / 衝突時 409） |
 | GET | `/users/{id}` | ユーザー取得（200 / 404） |
-
-## 教材：ユーザーID発行API
-
-設計書: `docs/superpowers/specs/2026-06-28-user-id-issuance-teaching-design.md`
-
-### ステージ1：ID発行ロジックを書く
-- 出題用 API（`ID_STRATEGY=problem`）の `app/idgen/problem.py` の `ProblemIssuer.issue` を実装する。
-- 要件: base62(0-9A-Za-z) 10文字 / 発行順ソート可 / 連番回避 / 最大100億件以上。
-- 確認: `docker compose run --rm app uv run pytest tests/test_idgen_problem.py`
-
-### ステージ2：並列化しても衝突させない
-- 複数コンテナ（LB配下）で発行しても ID が重複しないようにする。
-- 解答例: `app/idgen/generator.py`（プロセス毎に distinct な `WORKER_ID`）。
-- 衝突は負荷・マシン依存で確率的に起きる（決定的な証明は `tests/test_idgen_collision.py`）。
-  実機で観測 → 修正を確認:
-  ```bash
-  # 素朴解（衝突する）
-  ID_STRATEGY=stage1 docker compose -f compose.yaml -f compose.demo.yaml up -d --build db app1 app2 app3 lb
-  docker compose -f compose.yaml -f compose.demo.yaml run --rm -e TARGET_URL=http://lb:8080 app uv run python scripts/collision_demo.py
-  # 修正後（衝突しない）
-  ID_STRATEGY=stage2 docker compose -f compose.yaml -f compose.demo.yaml up -d --build db app1 app2 app3 lb
-  docker compose -f compose.yaml -f compose.demo.yaml run --rm -e TARGET_URL=http://lb:8080 app uv run python scripts/collision_demo.py
-  # 後片付け
-  docker compose -f compose.yaml -f compose.demo.yaml down -v
-  ```
-
-### 解答例 API
-`docker compose up solution`（http://localhost:8001/docs）で stage2 実装を直接試せる。
+| GET | `/users` | ユーザー一覧 |
 
 ## 開発コマンド（すべてコンテナ内）
 
 ```bash
-# Lint / Format
+# --- app (Python) ---
 docker compose run --rm app uv run ruff check .
-docker compose run --rm app uv run ruff format .
-
-# 型チェック
+docker compose run --rm app uv run ruff format --check .
 docker compose run --rm app uv run mypy app
+docker compose run --rm app uv run pytest -q
 
-# テスト
-docker compose run --rm app uv run pytest
+# --- runner (Rust) --- ※テスト実行前に db を起動すること
+docker compose up -d db
+docker compose run --rm -e DATABASE_URL=postgresql://postgres:postgres@db:5432/app runner cargo fmt --check
+docker compose run --rm -e DATABASE_URL=postgresql://postgres:postgres@db:5432/app runner cargo clippy -- -D warnings
+docker compose run --rm -e DATABASE_URL=postgresql://postgres:postgres@db:5432/app runner cargo test
 
-# マイグレーション
+# --- web (TypeScript/Vue) ---
+docker compose run --rm web npm run typecheck
+docker compose run --rm web npm run lint
+docker compose run --rm web npm run test
+
+# マイグレーション（app）
 docker compose run --rm app uv run alembic revision --autogenerate -m "message"
 docker compose run --rm app uv run alembic upgrade head
 ```
 
 ## 技術スタック
 
-Python 3.14 / uv / FastAPI / SQLModel / SQLAlchemy(async) / psycopg3 /
-Alembic / uvicorn / pytest / Ruff / mypy / PostgreSQL 18
+- **app**: Python 3.14 / uv / FastAPI / SQLModel / SQLAlchemy(async) / psycopg3 / Alembic / uvicorn / pytest / Ruff / mypy
+- **runner**: Rust / Axum / SQLx / tokio
+- **web**: TypeScript / Vue 3 / Vite / Vitest / ESLint
+- **infra**: PostgreSQL 18 / Docker Compose
 
 ## 構成
 
@@ -86,8 +87,14 @@ app/
   schemas/ リクエスト/レスポンススキーマ
   crud/    DB 操作ロジック
   api/     HTTP ルーター
-migrations/ Alembic マイグレーション
-tests/      pytest テスト
+  idgen/   ID発行ロジック（problem.py / generator.py）
+runner/    Rust 負荷ランナー（Axum）
+web/       Vue 3 + Vite 可視化フロント
+docs/
+  tutorial/  VitePress 7章チュートリアルサイト
+migrations/  Alembic マイグレーション
+tests/       pytest テスト
+scripts/     補助スクリプト（collision_demo.py など）
 ```
 
 ## VS Code 開発（Dev Containers）
