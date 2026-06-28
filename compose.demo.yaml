@@ -1,0 +1,55 @@
+services:
+  app1:
+    build: .
+    environment:
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@db:5432/app
+      ID_STRATEGY: ${ID_STRATEGY:-stage1}
+      WORKER_ID: "1"
+    volumes:
+      - .:/app
+      - app1venv:/app/.venv
+    depends_on:
+      db:
+        condition: service_healthy
+
+  app2:
+    build: .
+    environment:
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@db:5432/app
+      ID_STRATEGY: ${ID_STRATEGY:-stage1}
+      WORKER_ID: "2"
+    volumes:
+      - .:/app
+      - app2venv:/app/.venv
+    depends_on:
+      db:
+        condition: service_healthy
+
+  app3:
+    build: .
+    environment:
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@db:5432/app
+      ID_STRATEGY: ${ID_STRATEGY:-stage1}
+      WORKER_ID: "3"
+    volumes:
+      - .:/app
+      - app3venv:/app/.venv
+    depends_on:
+      db:
+        condition: service_healthy
+
+  lb:
+    image: nginx:alpine
+    volumes:
+      - ./demo/nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "8080:8080"
+    depends_on:
+      - app1
+      - app2
+      - app3
+
+volumes:
+  app1venv:
+  app2venv:
+  app3venv:
