@@ -17,7 +17,8 @@
 - ✅ **グループA（app）完了**: Task 1（`GET /users`）、Task 2（OpenAPI 強化: 409/examples/メタ）。
 - ✅ **グループB（runner, Rust/Axum）完了**: Task 3（雛形+healthz）、Task 4（`jobs` 永続化 sqlx）、Task 5（負荷エンジン tokio+mpsc）、Task 6（ジョブAPI `POST/GET /runs`）。
 - 🟡 **グループC（web, Vue）進行中**: Task 7（雛形+/api proxy）✅、Task 8（ID 検証純関数）✅、Task 9（単発発行UI）✅。**残: Task 10（ジョブ起動UI）**。
-- ⬜ **未着手**: Task 11（compose 統合 e2e 衝突体験）、Task 12（VitePress 雛形）、Task 13（チュートリアル7章）、Task 14（README+最終ゲート）、**Task 15（全依存ライブラリの安全な最新化・Rust Edition 含む）**。
+- ⬜ **未着手**: Task 11（compose 統合 e2e 衝突体験）、Task 12（VitePress 雛形）、Task 13（チュートリアル7章）、Task 14（README+最終ゲート）、**Task 15（全依存ライブラリの安全な最新化・Rust Edition 含む）**、**Task 16（コンテナ由来のファイル所有権の恒久対策＋最終確認）**。
+- ⚠️ **既知の対処済み事項**: Task 7 の Vite scaffold（`docker run ... node` を root 実行）により `web/` 配下が一時 root 所有になっていたのを 2026-06-28 に host UID(1000) へ chown 済み。再発防止は Task 16 で恒久化する。
 
 **実装メモ（再開時に重要）:**
 - runner クレートは **lib+bin 構成**（`runner/src/lib.rs` が `pub mod api/engine/store`、`main.rs` と `tests/api.rs` が `runner::` で参照）。`AppState { store, client }`。sqlx は**ランタイムクエリ**（`query`/`query_as`、`!` マクロ不使用）でビルド時 DB 不要。
@@ -936,6 +937,39 @@ docker compose build web   # npm ci が新 lock で通ることを確認
 - [ ] **Step 6: コミット/まとめ**
 
 各 Step で個別コミット済みなら、最後に差分の要約を残す（更新前後の主要バージョン表を report かコミット本文に）。
+
+---
+
+### Task 16: コンテナ由来のファイル所有権の恒久対策＋最終確認
+
+> **背景**: `docker run`/`docker compose run` は既定で root 実行のため、bind マウントへ書き込むと **ホスト側ファイルが root 所有**になり、ローカル（kyohei, uid=1000）から編集・削除できなくなる。Task 7 の Vite scaffold で実際に `web/` が root 所有になり、2026-06-28 に `docker run --rm -v "$PWD":/mnt alpine chown -R 1000:1000 ...` で修正済み。本タスクは**再発防止の恒久化**と**最終確認**を行う。
+
+**Files:**
+- Modify: `compose.yaml`（必要に応じて `user:` 指定）, 場合により `Dockerfile` 各種
+
+**方針（安全第一・既存ゲートを壊さない）:**
+- **恒久対策の検討と適用**: bind マウントへ書き込みうるサービス（app/runner/web/docs）の `docker compose run`/サービス実行を **ホスト UID:GID（1000:1000）で動かす**ようにする。手段の候補（KISS で1つ選ぶ）:
+  - compose の各サービスに `user: "1000:1000"`（または `${UID}:${GID}`）を付与。ただし named volume（`venv`/`cargo_target`/`node_modules`）の所有権・書込み権、コンテナ内 `$HOME`/cache の書込み（cargo の `$CARGO_HOME`、npm の cache、uv のキャッシュ）に注意。動かなければ Dockerfile 側で非 root ユーザを作る、もしくは entrypoint で chown する方式へ。
+  - 上記が副作用過多なら、**運用ルール**（README/plan に「bind マウントに書く一時 docker run は `--user $(id -u):$(id -g)` を付ける」）＋既存の chown ワンライナーを `scripts/` に用意、で代替（YAGNI）。
+- いずれの方式でも、**全言語ゲートが緑のまま**であることを確認（所有権変更でキャッシュ書込みが壊れないこと）。
+
+- [ ] **Step 1: 現状確認**
+
+```bash
+find . -path ./.git -prune -o -user root -print | head
+```
+root 所有が残っていれば `docker run --rm -v "$PWD":/mnt alpine sh -c 'find /mnt -path /mnt/.git -prune -o -user root -exec chown 1000:1000 {} +'` で是正。
+
+- [ ] **Step 2: 恒久対策を適用**（上記方針から1つ選択し実装）。app/runner/web/docs で `docker compose run` を実行 → 生成物がホストで kyohei 所有になることを確認。
+
+- [ ] **Step 3: 全ゲート再確認**（app/runner/web/docs）。ホットリロード・lock 更新・キャッシュ書込みが恒久対策後も機能すること。
+
+- [ ] **Step 4: 最終確認＆コミット**
+
+```bash
+find . -path ./.git -prune -o -user root -print   # 出力が空であること
+git add compose.yaml scripts 2>/dev/null; git commit -m "chore: run containers as host uid to prevent root-owned mounts"
+```
 
 ---
 
