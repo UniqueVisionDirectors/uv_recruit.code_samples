@@ -60,4 +60,6 @@ async def test_openapi_declares_conflict_and_examples(client):
     post = schema["paths"]["/users"]["post"]
     assert "409" in post["responses"]  # 衝突が宣言されている
     user_create = schema["components"]["schemas"]["UserCreate"]
-    assert "example" in user_create or "examples" in str(user_create)
+    assert "example" in user_create
+    user_read = schema["components"]["schemas"]["UserRead"]
+    assert "example" in user_read
