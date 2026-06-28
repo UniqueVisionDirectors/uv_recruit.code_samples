@@ -939,18 +939,18 @@ docker compose build web   # npm ci が新 lock で通ることを確認
   - 上記が副作用過多なら、**運用ルール**（README/plan に「bind マウントに書く一時 docker run は `--user $(id -u):$(id -g)` を付ける」）＋既存の chown ワンライナーを `scripts/` に用意、で代替（YAGNI）。
 - いずれの方式でも、**全言語ゲートが緑のまま**であることを確認（所有権変更でキャッシュ書込みが壊れないこと）。
 
-- [ ] **Step 1: 現状確認**
+- [x] **Step 1: 現状確認** ✓ root所有なし
 
 ```bash
 find . -path ./.git -prune -o -user root -print | head
 ```
 root 所有が残っていれば `docker run --rm -v "$PWD":/mnt alpine sh -c 'find /mnt -path /mnt/.git -prune -o -user root -exec chown 1000:1000 {} +'` で是正。
 
-- [ ] **Step 2: 恒久対策を適用**（上記方針から1つ選択し実装）。app/runner/web/docs で `docker compose run` を実行 → 生成物がホストで kyohei 所有になることを確認。
+- [x] **Step 2: 恒久対策を適用** ✓ docs=user 1000:1000 / Python サービスは cache を /tmp へ退避 / runner・web は named volume が保護 / Route B(scripts/fix-ownership.sh + README)（上記方針から1つ選択し実装）。app/runner/web/docs で `docker compose run` を実行 → 生成物がホストで kyohei 所有になることを確認。
 
-- [ ] **Step 3: 全ゲート再確認**（app/runner/web/docs）。ホットリロード・lock 更新・キャッシュ書込みが恒久対策後も機能すること。
+- [x] **Step 3: 全ゲート再確認** ✓ app/runner/web/docs 緑、所有権維持（app/runner/web/docs）。ホットリロード・lock 更新・キャッシュ書込みが恒久対策後も機能すること。
 
-- [ ] **Step 4: 最終確認＆コミット**
+- [x] **Step 4: 最終確認＆コミット** ✓ find -user root 空、commit f4fabac
 
 ```bash
 find . -path ./.git -prune -o -user root -print   # 出力が空であること
