@@ -35,5 +35,13 @@ export default withMermaid({
     sidebarMenuLabel: "メニュー",
     returnToTopLabel: "トップへ戻る",
   },
-  mermaid: {},
+  mermaid: {
+    // 図をコンテナ幅に縮小せず自然サイズで表示し、小さくなりすぎないようにする。
+    // はみ出す場合はテーマ CSS（.mermaid に overflow-x:auto）で横スクロールにする。
+    flowchart: { useMaxWidth: false, htmlLabels: true },
+    sequence: { useMaxWidth: false },
+    // 図中の文字を大きめにする（既定 ~16px → 21px ≒ 1.3倍）。レイアウト段階で
+    // 反映されるためノードもそれに合わせて大きくなる。
+    themeVariables: { fontSize: "21px" },
+  },
 });
