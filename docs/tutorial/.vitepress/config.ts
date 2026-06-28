@@ -24,7 +24,6 @@ export default withMermaid({
           { text: "05 スケールとロードバランサー", link: "/05-scale-lb" },
           { text: "06【問題②】衝突を観測", link: "/06-exercise-collision" },
           { text: "07【解答例②】worker-id 設計", link: "/07-solution-workerid" },
-          { text: "08 付録", link: "/08-appendix" },
         ],
       },
     ],
