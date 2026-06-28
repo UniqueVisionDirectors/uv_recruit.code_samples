@@ -1,0 +1,27 @@
+{
+  "name": "uv_recruit FastAPI",
+  "dockerComposeFile": ["../compose.yaml"],
+  "service": "app",
+  "workspaceFolder": "/app",
+  "overrideCommand": true,
+  "forwardPorts": [8000, 5432],
+  "portsAttributes": {
+    "8000": { "label": "app (FastAPI)" },
+    "5432": { "label": "db (PostgreSQL)" }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "charliermarsh.ruff",
+        "ms-python.mypy-type-checker",
+        "ms-azuretools.vscode-docker",
+        "tamasfe.even-better-toml"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/app/.venv/bin/python"
+      }
+    }
+  }
+}
