@@ -17,11 +17,27 @@ services:
     build: .
     environment:
       DATABASE_URL: postgresql+psycopg://postgres:postgres@db:5432/app
+      ID_STRATEGY: ${ID_STRATEGY:-problem}
     volumes:
       - .:/app
       - venv:/app/.venv
     ports:
       - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  solution:
+    build: .
+    environment:
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@db:5432/app
+      ID_STRATEGY: stage2
+      WORKER_ID: "1"
+    volumes:
+      - .:/app
+      - venv:/app/.venv
+    ports:
+      - "8001:8000"
     depends_on:
       db:
         condition: service_healthy
