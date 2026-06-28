@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { startRun } from '../lib/api'
 
 const emit = defineEmits<{
@@ -14,7 +14,13 @@ const concurrency = ref(1)
 const loading = ref(false)
 const error = ref('')
 
+// N・並列度はいずれも自然数（1以上の整数）。並列度 0 は runner 側で
+// mpsc::channel(0) が panic するため、submit 前に下限 1 を保証する。
+const isNatural = (v: number): boolean => Number.isInteger(v) && v >= 1
+const canLaunch = computed(() => isNatural(n.value) && isNatural(concurrency.value))
+
 async function launch(): Promise<void> {
+  if (!canLaunch.value) return
   error.value = ''
   loading.value = true
   try {
@@ -46,16 +52,13 @@ async function launch(): Promise<void> {
       </label>
       <label class="field">
         <span>並列度</span>
-        <select v-model.number="concurrency" :disabled="loading">
-          <option :value="1">1</option>
-          <option :value="100">100</option>
-          <option :value="1000">1000</option>
-        </select>
+        <input v-model.number="concurrency" type="number" min="1" step="1" :disabled="loading" />
       </label>
-      <button class="btn btn--primary" type="submit" :disabled="loading">
+      <button class="btn btn--primary" type="submit" :disabled="loading || !canLaunch">
         {{ loading ? '起動中…' : '起動' }}
       </button>
     </form>
+    <p v-if="!canLaunch" class="invalid-hint">N と並列度は 1 以上の整数を指定してください。</p>
     <p v-if="error" class="error-msg" role="alert">{{ error }}</p>
   </section>
 </template>
@@ -76,6 +79,12 @@ async function launch(): Promise<void> {
 
 .launch-form .field {
   flex: 1 1 140px;
+}
+
+.invalid-hint {
+  margin-top: var(--space-3);
+  color: var(--ng);
+  font-size: 0.85rem;
 }
 
 .error-msg {
