@@ -2,9 +2,7 @@ import { withMermaid } from "vitepress-plugin-mermaid";
 
 export default withMermaid({
   lang: "ja-JP",
-  title: "ユーザーID発行API サンプル",
-  description: "衝突を体験しながら学ぶ分散ID設計チュートリアル",
-  // サンプルは手元の localhost サービスを案内するため、到達性チェックの対象外にする。
+  title: "Web開発チュートリアル",
   ignoreDeadLinks: [/^https?:\/\/localhost/],
   themeConfig: {
     // 上部ナビ：どのページからでもホーム／チュートリアル先頭へ戻れる。
@@ -16,6 +14,8 @@ export default withMermaid({
     sidebar: [
       {
         text: "チュートリアル",
+        // collapsed を指定すると見出しに開閉トグルが付く（false＝既定で開いた状態）。
+        collapsed: false,
         items: [
           { text: "01 Webアプリの基本構成", link: "/01-web-basics" },
           { text: "02 サンプルの構成と起動", link: "/02-stack-setup" },
