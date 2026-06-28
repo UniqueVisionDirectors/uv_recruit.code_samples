@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
-import IssuePanel from './components/IssuePanel.vue'
-import UserTable from './components/UserTable.vue'
-import JobLauncher from './components/JobLauncher.vue'
-import JobList from './components/JobList.vue'
-import JobDetail from './components/JobDetail.vue'
+import { ref, onMounted, onUnmounted } from 'vue'
+import IssueView from './components/IssueView.vue'
+import JobsView from './components/JobsView.vue'
 import { listUsers, listRuns } from './lib/api'
 import type { UserRead, RunJob } from './lib/api'
+
+type View = 'issue' | 'jobs'
+const activeView = ref<View>('issue')
 
 const users = ref<UserRead[]>([])
 const fetchError = ref('')
@@ -26,16 +26,6 @@ function onIssued(): void {
 
 const jobs = ref<RunJob[]>([])
 const jobsError = ref('')
-const selectedJobId = ref<string | null>(null)
-
-// 一覧・詳細は GET /runs を唯一の出典とする（UserTable と同じく App がデータを所有し、
-// JobList / JobDetail は純表示）。選択中ジョブの詳細は取得済みの一覧から導出するため、
-// 個別取得は不要。
-const selectedJob = computed<RunJob | null>(() =>
-  selectedJobId.value === null
-    ? null
-    : (jobs.value.find((j) => j.job_id === selectedJobId.value) ?? null),
-)
 
 // runner はジョブを非同期実行し、完了/失敗時にだけ jobs を更新する。running が残る間だけ
 // 一覧をポーリングし、全ジョブが終了したら止める（無駄な定常ポーリングを避ける）。
@@ -78,10 +68,6 @@ function onLaunched(): void {
   })()
 }
 
-function onSelectJob(jobId: string): void {
-  selectedJobId.value = jobId
-}
-
 onMounted(() => {
   void refresh()
   void (async () => {
@@ -96,16 +82,96 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div id="app-inner">
-    <h1>ユーザー管理</h1>
-    <IssuePanel @issued="onIssued" />
-    <p v-if="fetchError" class="error-msg">{{ fetchError }}</p>
-    <UserTable :users="users" />
+  <header class="app-header">
+    <h1>ユーザーID発行 API デモ</h1>
+    <p class="subtitle">
+      IDを発行して要件（10文字・base62・発行順ソート整合）を確認し、負荷ジョブで衝突を観測します。
+    </p>
+  </header>
 
-    <h1>ジョブ管理</h1>
-    <JobLauncher @launched="onLaunched" />
-    <p v-if="jobsError" class="error-msg">{{ jobsError }}</p>
-    <JobList :jobs="jobs" @select="onSelectJob" />
-    <JobDetail :job="selectedJob" />
-  </div>
+  <nav class="tabs" aria-label="表示切替">
+    <button
+      class="tab"
+      type="button"
+      :class="{ 'tab--active': activeView === 'issue' }"
+      :aria-pressed="activeView === 'issue'"
+      @click="activeView = 'issue'"
+    >
+      単発発行
+    </button>
+    <button
+      class="tab"
+      type="button"
+      :class="{ 'tab--active': activeView === 'jobs' }"
+      :aria-pressed="activeView === 'jobs'"
+      @click="activeView = 'jobs'"
+    >
+      負荷ジョブ
+    </button>
+  </nav>
+
+  <main>
+    <IssueView
+      v-if="activeView === 'issue'"
+      :users="users"
+      :fetch-error="fetchError"
+      @issued="onIssued"
+    />
+    <JobsView
+      v-else
+      :jobs="jobs"
+      :jobs-error="jobsError"
+      @launched="onLaunched"
+    />
+  </main>
 </template>
+
+<style scoped>
+.app-header {
+  margin-bottom: var(--space-5);
+}
+
+.app-header h1 {
+  font-size: 1.75rem;
+  letter-spacing: -0.02em;
+  margin: 0 0 var(--space-2);
+}
+
+.subtitle {
+  color: var(--text-muted);
+  font-size: 0.95rem;
+}
+
+.tabs {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
+  border-bottom: 1px solid var(--border);
+}
+
+.tab {
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+
+.tab:hover {
+  color: var(--text-h);
+}
+
+.tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.tab--active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+</style>
