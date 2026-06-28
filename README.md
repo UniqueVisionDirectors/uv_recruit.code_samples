@@ -53,7 +53,7 @@ Alembic / uvicorn / pytest / Ruff / mypy / PostgreSQL 18
 
 ## 構成
 
-```
+```txt
 app/
   core/    設定（環境変数）
   db/      非同期エンジン・セッション
