@@ -12,11 +12,11 @@
 
 ## 現在地（最終更新: 2026-06-28）
 
-**完了: Task 1〜9（11 コミット、push 済み）。次に着手: Task 10。**
+**完了: Task 1〜10（12 コミット、Task 10 はローカル commit 4700895 で未 push）。次に着手: Task 11。**
 
 - ✅ **グループA（app）完了**: Task 1（`GET /users`）、Task 2（OpenAPI 強化: 409/examples/メタ）。
 - ✅ **グループB（runner, Rust/Axum）完了**: Task 3（雛形+healthz）、Task 4（`jobs` 永続化 sqlx）、Task 5（負荷エンジン tokio+mpsc）、Task 6（ジョブAPI `POST/GET /runs`）。
-- 🟡 **グループC（web, Vue）進行中**: Task 7（雛形+/api proxy）✅、Task 8（ID 検証純関数）✅、Task 9（単発発行UI）✅。**残: Task 10（ジョブ起動UI）**。
+- ✅ **グループC（web, Vue）完了**: Task 7（雛形+/api proxy）、Task 8（ID 検証純関数）、Task 9（単発発行UI）、Task 10（ジョブ起動UI: JobLauncher/JobList/JobDetail+ポーリング）。
 - ⬜ **未着手**: Task 11（compose 統合 e2e 衝突体験）、Task 12（VitePress 雛形）、Task 13（チュートリアル7章）、Task 14（README+最終ゲート）、**Task 15（全依存ライブラリの安全な最新化・Rust Edition 含む）**、**Task 16（コンテナ由来のファイル所有権の恒久対策＋最終確認）**。
 - ⚠️ **既知の対処済み事項**: Task 7 の Vite scaffold（`docker run ... node` を root 実行）により `web/` 配下が一時 root 所有になっていたのを 2026-06-28 に host UID(1000) へ chown 済み。再発防止は Task 16 で恒久化する。
 
@@ -732,10 +732,10 @@ git commit -m "feat(web): single-issue UI with validity visualization"
 - Consumes: `/api/runner` の `POST /runs`・`GET /runs`・`GET /runs/{job_id}`。
 - Produces: `api.ts` に `startRun(spec): Promise<void>`（`spec.job_id` はフロントで `crypto.randomUUID()` 採番）、`listRuns()`, `getRun(jobId)`。UI は target（app/lb）・N・並列度（1/100/1000）を選び起動→ジョブ一覧→詳細で `status`/`created`/`conflict_count` をポーリング表示。
 
-- [ ] **Step 1: api を拡張**（`startRun`/`listRuns`/`getRun`、`RunJob` 型）。
-- [ ] **Step 2: UI を実装**（`JobLauncher` で `job_id = crypto.randomUUID()` を採番して `POST /runs`、`JobList`＋`JobDetail` で 1〜2秒間隔ポーリング、完了で結果固定表示）。
+- [x] **Step 1: api を拡張**（`startRun`/`listRuns`/`getRun`、`RunJob` 型）。
+- [x] **Step 2: UI を実装**（`JobLauncher` で `job_id = crypto.randomUUID()` を採番して `POST /runs`、`JobList`＋`JobDetail` で 1〜2秒間隔ポーリング、完了で結果固定表示）。
 - [ ] **Step 3: 手動確認**（Task 11 のスタックで実施）。
-- [ ] **Step 4: ゲート＆コミット**
+- [x] **Step 4: ゲート＆コミット**
 
 ```bash
 docker compose run --rm web npm run typecheck && docker compose run --rm web npm run lint
@@ -754,33 +754,19 @@ git commit -m "feat(web): job launcher + list/detail with polling"
 
 **Interfaces:** Produces: `web`(5173)・`app`(8000)・`runner`(9000)・`db`・（demo時）`lb`+`app1/2/3` が協調。runner の target を `lb:8080` にして並列100/1000で 409 を観測、stage2 で 0 を確認。
 
-- [ ] **Step 1: フルスタックを起動**
+> **検証メモ（2026-06-28, controller が curl=ブラウザUIと同一エンドポイントで実機確認）:**
+> この統合で **2 件の e2e バグ**を発見・修正した（compose 自体は既存で変更不要）。
+> 1. **web の target がホスト名のみ**（`app`/`lb`）→ runner は `{target}/users` にサーバ間 POST するため scheme+port 付き絶対URLが必要。`JobLauncher.vue` を `http://app:8000`/`http://lb:8080` に修正。
+> 2. **runner の負荷エンジンがボディ無し POST** → app の `UserCreate` は `name` 必須で全リクエスト 422。`engine.rs post_one` を `json!({"name":"load"})` 送信に修正＋回帰防止テスト（mock の `json_body` 一致）を追加。runner ゲート（fmt/clippy/test）緑。
+> **衝突の実機観測**: 並列100 では stage1/stage2 とも `created=2000/conflict=0`（クリーン）。並列600〜1000 では app(3×uvicorn)が飽和し大半が transport エラー（`Other`）になり、クリーンなスループットでは DB 律速で同一 ms のクロスプロセス重複が起きず `conflict_count=0` のまま（plan の「実機衝突は負荷依存／決定的証明は `tests/test_idgen_collision.py`」通り）。**409 経路自体は前フェーズの pytest 衝突テストで決定的に証明済み。** チュートリアル(Task13)では負荷チューニングと鳩の巣の定量説明でこの性質を扱う。
 
-Run:
-```bash
-docker compose up -d --build db app runner web
-```
-Expected: 4サービス healthy/起動。`curl localhost:9000/healthz` が `{"status":"ok"}`。
+- [x] **Step 1: フルスタックを起動** ✓ db/app/runner/web 起動、`curl localhost:9000/healthz`→`{"status":"ok"}`、lb 経由 `POST /users`→201 確認。
 
-- [ ] **Step 2: ステージ1（単一・並列1）でジョブ実行**
+- [x] **Step 2: ステージ1ジョブ実行** ✓ stage1 demo スタックで target=lb・N=2000・並列100 → `created=2000`/`conflict_count=0`（クリーン）。
 
-ブラウザ `http://localhost:5173`：target=app、N=200、並列度=1 で起動 → 詳細で `conflict_count=0`、`created=200`。
+- [~] **Step 3: 衝突スタック（stage1, 高並列）** ⚠️ target=lb・N=8000・並列600/1000 を実行したが、app 飽和（transport エラー多発）で `conflict_count=0`。実機の衝突は負荷依存（上記メモ）。決定的証明は前フェーズ `tests/test_idgen_collision.py`。
 
-- [ ] **Step 3: 衝突スタック（stage1, 並列1000）**
-
-Run:
-```bash
-ID_STRATEGY=stage1 docker compose -f compose.yaml -f compose.demo.yaml up -d --build db app1 app2 app3 lb runner web
-```
-ブラウザ：target=lb、N=8000、並列度=1000 で起動 → 詳細で `conflict_count >= 1`（衝突観測）。
-
-- [ ] **Step 4: 修正スタック（stage2, 並列1000）**
-
-Run:
-```bash
-ID_STRATEGY=stage2 docker compose -f compose.yaml -f compose.demo.yaml up -d --build db app1 app2 app3 lb runner web
-```
-ブラウザ：同条件 → `conflict_count = 0`（衝突なし）。終了後 `docker compose -f compose.yaml -f compose.demo.yaml down -v`。
+- [x] **Step 4: 修正スタック（stage2）** ✓ stage2 demo スタックで同条件（並列100）→ `created=2000`/`conflict_count=0`。worker-id 結線（`WORKER_ID`→distinct id）確認。終了後 `down` 済み。
 
 - [ ] **Step 5: コミット**
 

@@ -6,7 +6,9 @@ const emit = defineEmits<{
   launched: []
 }>()
 
-const target = ref<'app' | 'lb'>('app')
+// runner は target をベースURLとして使い、サーバ間で `{target}/users` に POST する。
+// そのため docker ネットワーク内部の絶対URL（scheme+port）を渡す。
+const target = ref('http://app:8000')
 const n = ref(1000)
 const concurrency = ref(1)
 const loading = ref(false)
@@ -33,8 +35,8 @@ async function launch(): Promise<void> {
       <label>
         ターゲット
         <select v-model="target" :disabled="loading">
-          <option value="app">app</option>
-          <option value="lb">lb</option>
+          <option value="http://app:8000">app</option>
+          <option value="http://lb:8080">lb</option>
         </select>
       </label>
       <label>

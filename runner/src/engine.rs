@@ -1,3 +1,4 @@
+use serde_json::json;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -22,7 +23,15 @@ enum Outcome {
 
 async fn post_one(client: &reqwest::Client, target: &str) -> Outcome {
     let url = format!("{}/users", target);
-    match client.post(&url).send().await {
+    // app の `POST /users` は `{"name": ...}` を必須とする。ボディ無しだと 422 に
+    // なるため、負荷用の固定名を送る（id はサーバ側で発行され、衝突観測が目的なので
+    // name の一意性は不要）。
+    match client
+        .post(&url)
+        .json(&json!({"name": "load"}))
+        .send()
+        .await
+    {
         Ok(resp) => match resp.status().as_u16() {
             201 | 200 => Outcome::Created,
             409 => Outcome::Conflict,
@@ -101,12 +110,18 @@ mod tests {
     use httpmock::prelude::*;
 
     /// Mock always returns 201. Engine should stop exactly at n=50 created.
+    ///
+    /// The matcher also requires the `{"name": ...}` JSON body: the app rejects
+    /// body-less POSTs with 422, so this guards against regressing back to an
+    /// empty request that would never create a user.
     #[tokio::test]
     async fn run_load_all_created() {
         let server = MockServer::start_async().await;
         server
             .mock_async(|when, then| {
-                when.method(POST).path("/users");
+                when.method(POST)
+                    .path("/users")
+                    .json_body(json!({"name": "load"}));
                 then.status(201);
             })
             .await;
