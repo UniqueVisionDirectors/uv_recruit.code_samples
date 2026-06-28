@@ -8,6 +8,20 @@
 
 **Tech Stack:** Python 3.14 / uv / FastAPI / SQLModel / SQLAlchemy(async) / psycopg3 / Alembic / PostgreSQL 18 / pytest(+asyncio) / Ruff / mypy(strict) / Docker Compose / nginx(デモLB)。
 
+---
+
+## 作業の再開方法（Resume）
+
+> 新しいセッションで「**plan.md を確認し、作業を再開してください**」と指示されたら、この手順で進める。
+
+1. **前提を読む**: `CLAUDE.md`（KISS / YAGNI / DRY＋直交性 / 対称性）と設計書 `docs/superpowers/specs/2026-06-28-user-id-issuance-teaching-design.md`。本ファイルがこのプロジェクトの最新かつ唯一の実装計画。
+2. **状態確認**: `git status -sb` で `main` がクリーンか確認。`## main...origin/main`（ahead 表記なし）なら push 済み。
+3. **進捗の判定**: 下記 Task 群の `- [ ]`（未完了）/ `- [x]`（完了）を見て、**最初の未完了ステップ**から再開する。実装に着手していなければ **Task 1 から**始める。
+4. **実行スキル**: `superpowers:subagent-driven-development`（推奨：Task ごとに新規サブエージェント＋タスク間レビュー）または `superpowers:executing-plans`（インライン＋チェックポイント）を使い、**Task 単位**で進める。
+5. **TDD を厳守**: 各 Task は「テスト先行 → 失敗確認 → 最小実装 → 通過確認 → コミット」。
+6. **コマンドは全てコンテナ内**: `docker compose run --rm app uv run <cmd>`。
+7. 各 Task 完了ごとに**コミット**し、対応するチェックボックスを `- [x]` に更新して進捗を残す。
+
 ## Global Constraints
 
 - Python `>=3.14`。依存追加は最小限（YAGNI）。本計画では**新規ランタイム依存を増やさない**（nginx はイメージ、httpx は既存 dev 依存）。
