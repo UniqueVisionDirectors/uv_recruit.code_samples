@@ -1,12 +1,12 @@
-# ユーザーID発行API 教材 実装計画
+# 教材UX強化フェーズ 実装計画（フロント / runner / OpenAPI / チュートリアル）
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 既存の FastAPI/PostgreSQL/Docker 基盤を流用し、題材を `Item` CRUD から「ユーザーID発行」へ置き換え、(1) 単一サーバーで動く穴埋め式エンドポイントと (2) 並列化しても衝突しない解答例を、テストとデモで体験できる初心者向け教材を作る。
+**Goal:** 完成済みのユーザーID発行API（バックエンド）に、学習体験（UX）を付け足す ── ① Swagger UI を主役にした「触れる」API、② Vue 可視化フロント、③ Rust/Axum 負荷ランナー（ジョブ実行で 409 を測る）、④ VitePress チュートリアル ── を実装し、教材パッケージを完成させる。
 
-**Architecture:** ID発行ロジックを `IdIssuer` プロトコルで差し替え可能にし、共通コア（User モデル/DB/スキーマ/ルーティング）を共有したまま「出題用（スタブ）」と「解答例（stage1/stage2）」を `ID_STRATEGY` 設定で切り替える。ID は `ミリ秒(41bit) + worker-id(6bit) + シーケンス(12bit)` を base62 で10文字固定長エンコードしたもの。stage1（worker-id 無し＝全プロセス worker_id=0）は並列下で構造的に衝突し、stage2（プロセス毎に distinct な worker-id）は原理的に衝突しない。
+**Architecture:** 関心を言語・ディレクトリ・コンテナで分離する。`app`(Python/FastAPI) は ID発行ドメインに純化（一覧と OpenAPI 強化のみ追加）。`runner`(Rust/Axum) は DB に `jobs` を持つ非同期負荷ランナーで、tokio マルチスレッド＋mpsc キューで負荷タスクと記録タスクを分け、**409 はジョブ単位の集約のみ DB に書く**（逐次書き込みしない＝ボトルネック回避）。`web`(Vue/Vite) はブラウザUIで、単発発行（並列1）と runner ジョブ（並列100/1000）を起動し可視化。`docs`(VitePress) が自習＋ライブ投影兼用の唯一の正典。
 
-**Tech Stack:** Python 3.14 / uv / FastAPI / SQLModel / SQLAlchemy(async) / psycopg3 / Alembic / PostgreSQL 18 / pytest(+asyncio) / Ruff / mypy(strict) / Docker Compose / nginx(デモLB)。
+**Tech Stack:** Python 3.14 / FastAPI / SQLModel（既存）｜ Rust / Axum / tokio / sqlx / reqwest（新規 `runner/`）｜ Vite / Vue 3 / TypeScript（新規 `web/`）｜ VitePress + Mermaid（新規 `docs/tutorial/`）｜ Docker Compose / nginx(既存LB) / PostgreSQL 18。
 
 ---
 
@@ -14,1220 +14,867 @@
 
 > 新しいセッションで「**plan.md を確認し、作業を再開してください**」と指示されたら、この手順で進める。
 
-1. **前提を読む**: `CLAUDE.md`（KISS / YAGNI / DRY＋直交性 / 対称性）と設計書 `docs/superpowers/specs/2026-06-28-user-id-issuance-teaching-design.md`。本ファイルがこのプロジェクトの最新かつ唯一の実装計画。
-2. **状態確認**: `git status -sb` で `main` がクリーンか確認。`## main...origin/main`（ahead 表記なし）なら push 済み。
-3. **進捗の判定**: 下記 Task 群の `- [ ]`（未完了）/ `- [x]`（完了）を見て、**最初の未完了ステップ**から再開する。実装に着手していなければ **Task 1 から**始める。
-4. **実行スキル**: `superpowers:subagent-driven-development`（推奨：Task ごとに新規サブエージェント＋タスク間レビュー）または `superpowers:executing-plans`（インライン＋チェックポイント）を使い、**Task 単位**で進める。
+1. **前提を読む**: `CLAUDE.md`（KISS / YAGNI / DRY＋直交性 / 対称性）と設計書 `docs/superpowers/specs/2026-06-28-teaching-ux-frontend-tutorial-design.md`。本ファイルが最新かつ唯一の実装計画。前フェーズ（ID発行API本体）は**完了済み**で、本計画には載せない。
+2. **状態確認**: `git status -sb`。`## main...origin/main`（ahead 表記なし）なら push 済み。
+3. **進捗の判定**: 下記 Task 群の `- [ ]`/`- [x]` を見て、**最初の未完了ステップ**から再開する。未着手なら **Task 1 から**。
+4. **実行スキル**: `superpowers:subagent-driven-development`（推奨）または `superpowers:executing-plans` を使い **Task 単位**で進める。
 5. **TDD を厳守**: 各 Task は「テスト先行 → 失敗確認 → 最小実装 → 通過確認 → コミット」。
-6. **コマンドは全てコンテナ内**: `docker compose run --rm app uv run <cmd>`。
-7. 各 Task 完了ごとに**コミット**し、対応するチェックボックスを `- [x]` に更新して進捗を残す。
+6. **コマンドは全てコンテナ内**: Python は `docker compose run --rm app uv run <cmd>`、Rust は `docker compose run --rm runner cargo <cmd>`、Node は `docker compose run --rm web npm run <cmd>`（各サービス確立後）。
+7. 各 Task 完了ごとに**コミット**し、対応するチェックボックスを `- [x]` に更新する。
+8. **バージョン依存の確認**: Rust crate（axum/sqlx/tokio/reqwest）・Vite/Vue・VitePress の最新APIは、実装時に **context7 MCP** で確認してから書く（本計画のコードは構造を示すもの。API 細部は最新版に合わせる）。
 
 ## Global Constraints
 
-- Python `>=3.14`。依存追加は最小限（YAGNI）。本計画では**新規ランタイム依存を増やさない**（nginx はイメージ、httpx は既存 dev 依存）。
-- すべてのコマンドは**コンテナ内**で実行する：`docker compose run --rm app uv run <cmd>`。
-- 静的解析ゲートを常に緑に保つ：`ruff check .` / `ruff format .` / `mypy app` / `pytest`。Ruff line-length=88、mypy strict。
-- ID 文字集合（ASCII順＝値順）: `ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"`（62文字）。
-- ID 構造（合計59bit、`62^10 ≈ 8.39e17` 内）: `ID_LENGTH=10`, `SEQUENCE_BITS=12`(`MAX_SEQUENCE=4095`), `WORKER_BITS=6`(`MAX_WORKER_ID=63`), `WORKER_SHIFT=12`, `MS_SHIFT=18`。`value = (ms << 18) | (worker_id << 12) | sequence`。
-- 時刻: ミリ秒。`EPOCH_MS = 1735689600000`（2025-01-01T00:00:00Z）。`MAX_MS = 2**41 - 1`（約70年、〜2094年）。
-- stage2 は**1コンテナ＝1 worker-id**（uvicorn の worker は1プロセス）。複数 worker プロセスを1コンテナで動かさない。
-- CLAUDE.md 4原則（KISS / YAGNI / DRY＋直交性 / 対称性）を遵守。出題/解答・素朴解/正解は対称に表現し、差分は worker-id の有無のみ。
+- 既存の Python ゲートを常に緑に保つ: `ruff check .` / `ruff format --check .` / `mypy app` / `pytest`（Ruff line-length=88、mypy strict）。既存 23 テストを壊さない。
+- 新コンポーネントのゲートも緑に保つ:
+  - Rust: `cargo fmt --check` / `cargo clippy -- -D warnings` / `cargo test`。
+  - Front: `npm run typecheck`(vue-tsc) / `npm run lint`(ESLint) / `npm run test`(Vitest)。
+- すべてのコマンドは**コンテナ内**で実行する。
+- **app は衝突を記録しない**（純度維持）。409 件数の集計は runner の `jobs` テーブルが担う。
+- **runner のエンドポイント（`/runs` 等）は app の OpenAPI に含めない**。runner は別サービス・別ポート・別言語（Rust/Axum）で、FastAPI の `/openapi.json`・`/docs` は app のルートのみを対象とする（構成上自然に分離。Swagger UI の「Try it out」が指すのは app の API だけ）。runner は最低限 ① 負荷起動 `POST /runs`、② ジョブ一覧 `GET /runs`、③ ジョブ詳細 `GET /runs/{job_id}` を持つ（＋`GET /healthz`）。
+- **runner は 409 を逐次 DB 書き込みしない**。負荷タスク→mpsc→集約タスクの分離で、DB へはジョブ単位の集約（開始 INSERT・完了 UPDATE・任意の定期スナップショット）だけを書く。
+- worker-id 機構は現行の**明示 `WORKER_ID`＋3サービス**を維持（`--scale`/hostname へは寄せない）。
+- ID 不変条件（既存）: base62(`0-9A-Za-z`) 10文字 / 発行順に文字列ソート可 / 連番回避。
+- CLAUDE.md 4原則（KISS / YAGNI / DRY＋直交性 / 対称性）を遵守。
 
 ---
 
-## ファイル構成
+## ファイル構成（本フェーズで触る範囲）
 
-**新規作成**
-- `app/models/user.py` — User テーブル（`id: str` PK 10文字）
-- `app/schemas/user.py` — `UserCreate` / `UserRead`
-- `app/crud/user.py` — `create_user` / `get_user` / `list_users`
-- `app/idgen/__init__.py` — 空
-- `app/idgen/base.py` — 定数・`encode_base62`/`decode_base62`・`IdIssuer` プロトコル・`Clock`
-- `app/idgen/generator.py` — `UserIdGenerator`（解答例：stage1=worker_id 0 / stage2=distinct）
-- `app/idgen/problem.py` — `ProblemIssuer`（出題用スタブ）
-- `app/idgen/factory.py` — `build_issuer(settings) -> IdIssuer`
-- `app/api/routes_user.py` — `/users` ルーター＋`get_issuer` 依存
-- `tests/test_idgen_base.py` / `tests/test_idgen_generator.py` / `tests/test_idgen_collision.py` / `tests/test_idgen_problem.py`
-- `tests/test_crud_user.py` / `tests/test_api_users.py`
-- `compose.demo.yaml` / `demo/nginx.conf` / `scripts/collision_demo.py`
-- `migrations/versions/0001_create_users.py`（初期マイグレーションを置換）
+**app（変更）**
+- `app/api/routes_user.py` — `GET /users` 追加、`POST /users` に `responses`/`summary`/`tags`。
+- `app/schemas/user.py` — `UserCreate`/`UserRead` に `examples`。
+- `app/main.py` — FastAPI `title`/`description`/`version`。
+- `tests/test_api_users.py` — 一覧・OpenAPI 検証を追加。
 
-**変更**
-- `app/main.py` — `create_app(issuer)` ファクトリ化、user ルーター結線
-- `app/core/config.py` — `id_strategy` / `worker_id` 追加
-- `migrations/env.py` — import を `item` → `user`
-- `tests/conftest.py` — metadata 登録 import を `item` → `user`
-- `compose.yaml` — `app` に `ID_STRATEGY`、`solution` サービス追加
-- `README.md` — 教材構成・実行手順・衝突デモ
+**runner（新規 `runner/`）**
+- `runner/Cargo.toml` / `runner/Dockerfile` / `runner/.dockerignore`
+- `runner/src/main.rs` — 起動・ルーティング・状態。
+- `runner/src/api.rs` — `POST /runs` / `GET /runs` / `GET /runs/{job_id}` / `GET /healthz`。
+- `runner/src/engine.rs` — 負荷エンジン（tokio＋mpsc＋集約、N成功まで＋安全上限）。
+- `runner/src/store.rs` — sqlx による `jobs` 永続化。
+- `runner/migrations/0001_create_jobs.sql` — `jobs` テーブル。
+- `runner/tests/*.rs` — 集約ロジック・API 結合テスト。
 
-**削除**
-- `app/models/item.py` / `app/schemas/item.py` / `app/crud/item.py` / `app/api/routes_item.py`
-- `tests/test_api_items.py` / `tests/test_crud_item.py`
-- `migrations/versions/15b778dd63a3_create_items_table.py`
+**web（新規 `web/`）**
+- `web/Dockerfile` / `web/package.json` / `web/vite.config.ts` / `web/tsconfig.json` / `web/.eslintrc.*`
+- `web/src/lib/validate.ts` — ID 検証純関数。
+- `web/src/lib/api.ts` — `/api` クライアント（app / runner）。
+- `web/src/components/*` / `web/src/App.vue` — 単発発行・一覧・妥当性・ジョブ一覧/詳細。
+- `web/src/lib/validate.test.ts` — 検証純関数の Vitest。
+
+**docs（新規 `docs/tutorial/`）**
+- `docs/tutorial/.vitepress/config.ts` — サイト設定・ナビ・Mermaid。
+- `docs/tutorial/index.md` ＋ `docs/tutorial/01..07-*.md` — 章。
+- `docs/tutorial/package.json` / `docs/tutorial/Dockerfile`（プレビュー用）。
+
+**統合（変更）**
+- `compose.yaml` — `web` / `runner` / `docs` サービス、`/api` プロキシ、runner→DB 結線。
+- `README.md` — チュートリアルへ誘導。
+- `web/nginx.conf`（任意・本番配信時）／`web/vite.config.ts` の proxy（dev）。
 
 ---
 
-### Task 1: User 永続化層（model / schema / crud）に置き換え
+## グループA — app（Python, ドメイン純度維持）
+
+### Task 1: `GET /users` 一覧エンドポイント
 
 **Files:**
-- Create: `app/models/user.py`, `app/schemas/user.py`, `app/crud/user.py`, `tests/test_crud_user.py`
-- Modify: `tests/conftest.py:9`（`from app.models import item` → `user`）
-- Delete: `app/models/item.py`, `app/schemas/item.py`, `app/crud/item.py`, `tests/test_crud_item.py`, `tests/test_api_items.py`
+- Modify: `app/api/routes_user.py`, `tests/test_api_users.py`
 
 **Interfaces:**
-- Produces: `User`（属性 `id: str`, `name: str`, `created_at: datetime`）／`UserCreate(name: str)`／`UserRead(id,name,created_at)`／`create_user(session, *, user_id: str, name: str) -> User`, `get_user(session, user_id: str) -> User | None`, `list_users(session, limit=100, offset=0) -> list[User]`。
+- Consumes: 既存 `crud.list_users(session, limit, offset) -> list[User]`, `get_session`, `UserRead`。
+- Produces: `GET /users?limit&offset -> list[UserRead]`（200, `id` 昇順）。
 
-- [x] **Step 1: User モデル・スキーマを作成**
+- [ ] **Step 1: 失敗するテストを書く**
 
-`app/models/user.py`:
+`tests/test_api_users.py` に追記:
 ```python
-from datetime import UTC, datetime
-
-from sqlmodel import Field, SQLModel
-
-
-def _utcnow() -> datetime:
-    return datetime.now(UTC)
-
-
-class User(SQLModel, table=True):
-    __tablename__ = "users"
-
-    id: str = Field(primary_key=True, max_length=10)
-    name: str
-    created_at: datetime = Field(default_factory=_utcnow)
+async def test_list_users_returns_sorted(client):
+    _install_issuer()
+    for name in ["a", "b", "c"]:
+        await client.post("/users", json={"name": name})
+    resp = await client.get("/users?limit=10&offset=0")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body) == 3
+    ids = [u["id"] for u in body]
+    assert ids == sorted(ids)  # 発行順＝ソート順
 ```
 
-`app/schemas/user.py`:
+- [ ] **Step 2: 失敗を確認**
+
+Run: `docker compose run --rm app uv run pytest tests/test_api_users.py::test_list_users_returns_sorted -v`
+Expected: FAIL（`GET /users` 未定義→404 で assert 失敗）
+
+- [ ] **Step 3: 一覧ルートを実装**
+
+`app/api/routes_user.py`、`get_issuer` の定義後・`@router.post(...)` の前に追加:
+```python
+@router.get("", response_model=list[UserRead])
+async def list_users(
+    limit: int = 100,
+    offset: int = 0,
+    session: AsyncSession = Depends(get_session),
+) -> list[UserRead]:
+    users = await crud.list_users(session, limit=limit, offset=offset)
+    return [UserRead.model_validate(u, from_attributes=True) for u in users]
+```
+
+- [ ] **Step 4: 通過を確認**
+
+Run: `docker compose run --rm app uv run pytest tests/test_api_users.py -v`
+Expected: PASS（既存4件＋新規1件）
+
+- [ ] **Step 5: コミット**
+
+```bash
+git add app/api/routes_user.py tests/test_api_users.py
+git commit -m "feat(app): add GET /users list endpoint"
+```
+
+---
+
+### Task 2: OpenAPI を教材品質に強化（409宣言・例・メタ情報）
+
+**Files:**
+- Modify: `app/api/routes_user.py`, `app/schemas/user.py`, `app/main.py`, `tests/test_api_users.py`
+
+**Interfaces:**
+- Produces: `/openapi.json` に `POST /users` の 409 レスポンス定義と `UserCreate`/`UserRead` の examples が含まれる。挙動（200/201/404/409）は不変。
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`tests/test_api_users.py` に追記:
+```python
+async def test_openapi_declares_conflict_and_examples(client):
+    schema = (await client.get("/openapi.json")).json()
+    post = schema["paths"]["/users"]["post"]
+    assert "409" in post["responses"]  # 衝突が宣言されている
+    user_create = schema["components"]["schemas"]["UserCreate"]
+    assert "example" in user_create or "examples" in str(user_create)
+```
+
+- [ ] **Step 2: 失敗を確認**
+
+Run: `docker compose run --rm app uv run pytest tests/test_api_users.py::test_openapi_declares_conflict_and_examples -v`
+Expected: FAIL（409 未宣言）
+
+- [ ] **Step 3: スキーマに例を付ける**
+
+`app/schemas/user.py` を置換:
 ```python
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class UserCreate(BaseModel):
+    model_config = ConfigDict(
+        json_schema_extra={"example": {"name": "alice"}}
+    )
     name: str
 
 
 class UserRead(BaseModel):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "id": "0uLvI2MYQL",
+                "name": "alice",
+                "created_at": "2026-06-28T06:03:23.931468",
+            }
+        }
+    )
     id: str
     name: str
     created_at: datetime
 ```
 
-- [x] **Step 2: crud のテストを書く（失敗させる）**
+- [ ] **Step 4: POST に 409 宣言と summary/tags を付ける**
 
-`tests/test_crud_user.py`:
+`app/api/routes_user.py` の `@router.post(...)` デコレータを置換:
 ```python
-from app.crud import user as crud
-
-
-async def test_create_and_get_user(session):
-    created = await crud.create_user(session, user_id="0000000abc", name="alice")
-    assert created.id == "0000000abc"
-    fetched = await crud.get_user(session, "0000000abc")
-    assert fetched is not None
-    assert fetched.name == "alice"
-
-
-async def test_get_missing_user_returns_none(session):
-    assert await crud.get_user(session, "zzzzzzzzzz") is None
-
-
-async def test_list_users_sorted_by_id(session):
-    await crud.create_user(session, user_id="0000000002", name="b")
-    await crud.create_user(session, user_id="0000000001", name="a")
-    users = await crud.list_users(session)
-    assert [u.id for u in users] == ["0000000001", "0000000002"]
+@router.post(
+    "",
+    response_model=UserRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="ユーザーを作成しIDを発行",
+    responses={
+        409: {"description": "ID 衝突（アプリ側ロジックが一意でない場合に発生）"}
+    },
+)
 ```
 
-- [x] **Step 3: conftest の metadata 登録 import を user に変更**
+- [ ] **Step 5: アプリのメタ情報を設定**
 
-`tests/conftest.py` の `from app.models import item  # noqa: F401  metadata 登録` を次へ置換:
+`app/main.py` の `FastAPI(...)` 呼び出しを置換:
 ```python
-from app.models import user  # noqa: F401  metadata 登録
-```
-
-- [x] **Step 4: テストが失敗することを確認**
-
-Run: `docker compose run --rm app uv run pytest tests/test_crud_user.py -v`
-Expected: FAIL（`app.crud.user` が無い / ImportError）
-
-- [x] **Step 5: crud を実装**
-
-`app/crud/user.py`:
-```python
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlmodel import select
-
-from app.models.user import User
-
-
-async def create_user(session: AsyncSession, *, user_id: str, name: str) -> User:
-    user = User(id=user_id, name=name)
-    session.add(user)
-    await session.commit()
-    await session.refresh(user)
-    return user
-
-
-async def get_user(session: AsyncSession, user_id: str) -> User | None:
-    return await session.get(User, user_id)
-
-
-async def list_users(
-    session: AsyncSession, limit: int = 100, offset: int = 0
-) -> list[User]:
-    result = await session.execute(
-        select(User).order_by(User.id).offset(offset).limit(limit)
+    application = FastAPI(
+        title="ユーザーID発行API（教材）",
+        description=(
+            "発行順ソート可能な base62 10文字 ID を払い出す教材用 API。"
+            "/docs の Try it out から実際に発行できる。"
+        ),
+        version="0.2.0",
     )
-    return list(result.scalars().all())
 ```
 
-- [x] **Step 6: 旧 Item 関連ファイルを削除**
-
-```bash
-git rm app/models/item.py app/schemas/item.py app/crud/item.py \
-       tests/test_crud_item.py tests/test_api_items.py
-```
-
-- [x] **Step 7: テストが通ることを確認**
-
-Run: `docker compose run --rm app uv run pytest tests/test_crud_user.py -v`
-Expected: PASS（3件）
-
-- [x] **Step 8: コミット**
-
-```bash
-git add app/models/user.py app/schemas/user.py app/crud/user.py \
-        tests/test_crud_user.py tests/conftest.py
-git commit -m "feat: replace Item with User persistence layer"
-```
-
----
-
-### Task 2: Alembic 初期マイグレーションを users に置換
-
-**Files:**
-- Create: `migrations/versions/0001_create_users.py`
-- Modify: `migrations/env.py:9`（import を `item` → `user`）
-- Delete: `migrations/versions/15b778dd63a3_create_items_table.py`
-
-**Interfaces:** Produces: head リビジョン `0001_create_users`（`users` テーブル）。
-
-- [x] **Step 1: env.py の metadata 登録 import を user に変更**（Task 1 で前倒し実施済み：entrypoint が毎回 alembic を読むため）
-
-`migrations/env.py` の `from app.models import item  # noqa: F401  models を import して metadata に登録` を次へ置換:
-```python
-from app.models import user  # noqa: F401  models を import して metadata に登録
-```
-
-- [x] **Step 2: 旧マイグレーションを削除**
-
-```bash
-git rm migrations/versions/15b778dd63a3_create_items_table.py
-```
-
-- [x] **Step 3: 新しい初期マイグレーションを作成**
-
-`migrations/versions/0001_create_users.py`:
-```python
-"""create users table
-
-Revision ID: 0001_create_users
-Revises:
-Create Date: 2026-06-28 00:00:00.000000
-"""
-
-from collections.abc import Sequence
-
-import sqlalchemy as sa
-import sqlmodel
-from alembic import op
-
-revision: str = "0001_create_users"
-down_revision: str | None = None
-branch_labels: str | Sequence[str] | None = None
-depends_on: str | Sequence[str] | None = None
-
-
-def upgrade() -> None:
-    op.create_table(
-        "users",
-        sa.Column("id", sa.String(length=10), nullable=False),
-        sa.Column("name", sqlmodel.sql.sqltypes.AutoString(), nullable=False),
-        sa.Column("created_at", sa.DateTime(), nullable=False),
-        sa.PrimaryKeyConstraint("id"),
-    )
-
-
-def downgrade() -> None:
-    op.drop_table("users")
-```
-
-- [x] **Step 4: DB をリセットしてマイグレーション適用を確認**
+- [ ] **Step 6: 通過と全ゲートを確認**
 
 Run:
 ```bash
-docker compose down -v
-docker compose run --rm app uv run alembic upgrade head
-```
-Expected: `Running upgrade -> 0001_create_users, create users table` のログ。エラーなし。
-
-- [x] **Step 5: コミット**
-
-```bash
-git add migrations/env.py migrations/versions/0001_create_users.py
-git commit -m "feat: replace initial migration with users table"
-```
-
----
-
-### Task 3: ID コーデック層（`idgen/base.py`）
-
-**Files:**
-- Create: `app/idgen/__init__.py`（空）, `app/idgen/base.py`, `tests/test_idgen_base.py`
-
-**Interfaces:**
-- Produces: 定数（`ALPHABET`,`ID_LENGTH`,`SEQUENCE_BITS`,`MAX_SEQUENCE`,`SEQUENCE_MASK`,`WORKER_BITS`,`MAX_WORKER_ID`,`WORKER_SHIFT`,`MS_SHIFT`,`EPOCH_MS`,`MAX_MS`）／`encode_base62(value: int, length: int = ID_LENGTH) -> str`／`decode_base62(text: str) -> int`／`Clock = Callable[[], int]`／`class IdIssuer(Protocol): def issue(self) -> str: ...`。
-
-- [x] **Step 1: 空 `app/idgen/__init__.py` を作成**
-
-```bash
-mkdir -p app/idgen && : > app/idgen/__init__.py
-```
-
-- [x] **Step 2: コーデックのテストを書く**
-
-`tests/test_idgen_base.py`:
-```python
-import pytest
-
-from app.idgen.base import (
-    ID_LENGTH,
-    decode_base62,
-    encode_base62,
-)
-
-
-def test_encode_is_fixed_length_and_charset():
-    s = encode_base62(0)
-    assert s == "0000000000"
-    assert len(s) == ID_LENGTH
-
-
-def test_encode_decode_roundtrip():
-    for v in [0, 1, 61, 62, 12345, 62**10 - 1]:
-        assert decode_base62(encode_base62(v)) == v
-
-
-def test_lexicographic_order_matches_value_order():
-    smaller = encode_base62(1000)
-    larger = encode_base62(2000)
-    assert smaller < larger  # 素朴な文字列比較で値順になる
-
-
-def test_encode_rejects_too_large_value():
-    with pytest.raises(ValueError):
-        encode_base62(62**10)
-
-
-def test_encode_rejects_negative_value():
-    with pytest.raises(ValueError):
-        encode_base62(-1)
-```
-
-- [x] **Step 3: テストが失敗することを確認**
-
-Run: `docker compose run --rm app uv run pytest tests/test_idgen_base.py -v`
-Expected: FAIL（`app.idgen.base` が無い）
-
-- [x] **Step 4: `app/idgen/base.py` を実装**
-
-```python
-from collections.abc import Callable
-from typing import Protocol
-
-ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
-_BASE = len(ALPHABET)  # 62
-_INDEX = {ch: i for i, ch in enumerate(ALPHABET)}
-
-ID_LENGTH = 10
-
-SEQUENCE_BITS = 12
-MAX_SEQUENCE = (1 << SEQUENCE_BITS) - 1  # 4095
-SEQUENCE_MASK = MAX_SEQUENCE
-
-WORKER_BITS = 6
-MAX_WORKER_ID = (1 << WORKER_BITS) - 1  # 63
-
-WORKER_SHIFT = SEQUENCE_BITS           # 12
-MS_SHIFT = WORKER_BITS + SEQUENCE_BITS  # 18
-
-EPOCH_MS = 1735689600000  # 2025-01-01T00:00:00Z
-MAX_MS = (1 << 41) - 1
-
-_MAX_VALUE = _BASE**ID_LENGTH - 1
-
-Clock = Callable[[], int]
-
-
-def encode_base62(value: int, length: int = ID_LENGTH) -> str:
-    if value < 0:
-        raise ValueError("value must be non-negative")
-    if value > _MAX_VALUE:
-        raise ValueError(f"value too large for {length} base62 chars")
-    chars = []
-    for _ in range(length):
-        value, rem = divmod(value, _BASE)
-        chars.append(ALPHABET[rem])
-    return "".join(reversed(chars))
-
-
-def decode_base62(text: str) -> int:
-    value = 0
-    for ch in text:
-        value = value * _BASE + _INDEX[ch]
-    return value
-
-
-class IdIssuer(Protocol):
-    def issue(self) -> str: ...
-```
-
-- [x] **Step 5: テストが通ることを確認**
-
-Run: `docker compose run --rm app uv run pytest tests/test_idgen_base.py -v`
-Expected: PASS（5件）
-
-- [x] **Step 6: コミット**
-
-```bash
-git add app/idgen/__init__.py app/idgen/base.py tests/test_idgen_base.py
-git commit -m "feat: add base62 codec and id field layout constants"
-```
-
----
-
-### Task 4: 解答例ジェネレータ `UserIdGenerator`
-
-**Files:**
-- Create: `app/idgen/generator.py`, `tests/test_idgen_generator.py`
-
-**Interfaces:**
-- Consumes: `app.idgen.base` の定数・`encode_base62`・`decode_base62`・`Clock`。
-- Produces: `class UserIdGenerator:` `__init__(self, worker_id: int, *, now_ms: Clock | None = None, rng: random.Random | None = None)`、メソッド `issue(self) -> str`。worker_id 範囲外で `ValueError`。`issue` は `IdIssuer` を満たす。
-
-- [x] **Step 1: ジェネレータのテストを書く**
-
-`tests/test_idgen_generator.py`:
-```python
-import random
-import re
-
-import pytest
-
-from app.idgen.base import EPOCH_MS, MAX_SEQUENCE, MAX_WORKER_ID, decode_base62
-from app.idgen.generator import UserIdGenerator
-
-ID_RE = re.compile(r"^[0-9A-Za-z]{10}$")
-
-
-def _fixed_clock(ms_since_epoch: int):
-    return lambda: EPOCH_MS + ms_since_epoch
-
-
-def test_issue_matches_format():
-    gen = UserIdGenerator(0, now_ms=_fixed_clock(1000), rng=random.Random(0))
-    assert ID_RE.match(gen.issue())
-
-
-def test_single_generator_unique_within_one_ms():
-    gen = UserIdGenerator(0, now_ms=_fixed_clock(7), rng=random.Random(0))
-    ids = [gen.issue() for _ in range(MAX_SEQUENCE + 1)]  # 4096 件
-    assert len(set(ids)) == MAX_SEQUENCE + 1
-
-
-def test_ids_sortable_by_issue_order():
-    clock = {"ms": 0}
-    gen = UserIdGenerator(0, now_ms=lambda: EPOCH_MS + clock["ms"], rng=random.Random(0))
-    first = gen.issue()
-    clock["ms"] = 5
-    second = gen.issue()
-    assert first < second  # 後発のほうが文字列順で大きい
-
-
-def test_worker_id_occupies_worker_bits():
-    gen = UserIdGenerator(5, now_ms=_fixed_clock(3), rng=random.Random(0))
-    value = decode_base62(gen.issue())
-    assert (value >> 12) & MAX_WORKER_ID == 5
-
-
-def test_rejects_out_of_range_worker_id():
-    with pytest.raises(ValueError):
-        UserIdGenerator(MAX_WORKER_ID + 1)
-
-
-def test_rejects_timestamp_before_epoch():
-    gen = UserIdGenerator(0, now_ms=lambda: EPOCH_MS - 1, rng=random.Random(0))
-    with pytest.raises(ValueError):
-        gen.issue()
-```
-
-- [x] **Step 2: テストが失敗することを確認**
-
-Run: `docker compose run --rm app uv run pytest tests/test_idgen_generator.py -v`
-Expected: FAIL（`app.idgen.generator` が無い）
-
-- [x] **Step 3: `app/idgen/generator.py` を実装**
-
-```python
-import random
-import time
-
-from app.idgen.base import (
-    EPOCH_MS,
-    MAX_MS,
-    MAX_SEQUENCE,
-    MAX_WORKER_ID,
-    MS_SHIFT,
-    SEQUENCE_MASK,
-    WORKER_SHIFT,
-    Clock,
-    encode_base62,
-)
-
-
-def _default_clock() -> int:
-    return time.time_ns() // 1_000_000
-
-
-class UserIdGenerator:
-    """発行順ソート可能・並列安全な ID ジェネレータ（解答例）。
-
-    worker_id をプロセス毎に distinct にすれば、同一ミリ秒でも
-    `(ms, worker_id, sequence)` が一意になり原理的に衝突しない（stage2）。
-    全プロセスが worker_id=0 を使うと並列下で構造的に衝突する（stage1）。
-    """
-
-    def __init__(
-        self,
-        worker_id: int,
-        *,
-        now_ms: Clock | None = None,
-        rng: random.Random | None = None,
-    ) -> None:
-        if not 0 <= worker_id <= MAX_WORKER_ID:
-            raise ValueError(f"worker_id must be in 0..{MAX_WORKER_ID}")
-        self._worker_id = worker_id
-        self._now_ms: Clock = now_ms or _default_clock
-        self._rng = rng or random.Random()
-        self._current_ms = -1
-        self._seq_base = 0
-        self._counter = 0
-
-    def issue(self) -> str:
-        ms = self._now_ms() - EPOCH_MS
-        if ms < 0 or ms > MAX_MS:
-            raise ValueError("timestamp out of representable range")
-        if ms != self._current_ms:
-            self._current_ms = ms
-            self._seq_base = self._rng.randrange(MAX_SEQUENCE + 1)
-            self._counter = 0
-        else:
-            self._counter += 1
-            if self._counter > MAX_SEQUENCE:
-                # この ms のシーケンスを使い切った。次の ms までスピンして再採番。
-                while self._now_ms() - EPOCH_MS == self._current_ms:
-                    pass
-                return self.issue()
-        sequence = (self._seq_base + self._counter) & SEQUENCE_MASK
-        value = (ms << MS_SHIFT) | (self._worker_id << WORKER_SHIFT) | sequence
-        return encode_base62(value)
-```
-
-- [x] **Step 4: テストが通ることを確認**
-
-Run: `docker compose run --rm app uv run pytest tests/test_idgen_generator.py -v`
-Expected: PASS（6件）
-
-- [x] **Step 5: コミット**
-
-```bash
-git add app/idgen/generator.py tests/test_idgen_generator.py
-git commit -m "feat: add UserIdGenerator (sortable, worker-partitioned ids)"
-```
-
----
-
-### Task 5: 衝突デモンストレーション（教材の核）テスト
-
-**Files:**
-- Create: `tests/test_idgen_collision.py`
-
-**Interfaces:** Consumes: `UserIdGenerator`, `app.idgen.base` 定数。新規プロダクションコードなし（既存挙動を「壊れる/直る」観点で検証する）。
-
-> 鳩の巣原理で**決定的に**検証する。固定クロックの同一ミリ秒では `worker_id` を固定すると採れる値は `MAX_SEQUENCE+1=4096` 通りしか無い。各ジェネレータからちょうど 4096 件引けばスピンせず全 4096 値を一巡する。
-
-- [x] **Step 1: 衝突/不衝突のテストを書く**
-
-`tests/test_idgen_collision.py`:
-```python
-import random
-
-from app.idgen.base import EPOCH_MS, MAX_SEQUENCE
-from app.idgen.generator import UserIdGenerator
-
-_SAME_MS = lambda: EPOCH_MS + 42  # 全ジェネレータが同一ミリ秒を見る  # noqa: E731
-_PER_GEN = MAX_SEQUENCE + 1  # 4096
-
-
-def test_stage1_naive_collides_across_processes():
-    # worker-id を持たない素朴解＝全プロセス worker_id=0。
-    gen_a = UserIdGenerator(0, now_ms=_SAME_MS, rng=random.Random(1))
-    gen_b = UserIdGenerator(0, now_ms=_SAME_MS, rng=random.Random(2))
-    ids = [gen_a.issue() for _ in range(_PER_GEN)]
-    ids += [gen_b.issue() for _ in range(_PER_GEN)]
-    # 8192 件発行したが distinct 値は最大 4096 → 必ず重複する。
-    assert len(ids) == 2 * _PER_GEN
-    assert len(set(ids)) <= _PER_GEN
-    assert len(set(ids)) < len(ids)  # 衝突が観測される
-
-
-def test_stage2_distinct_worker_ids_never_collide():
-    # 修正：プロセス毎に distinct な worker_id を付与。
-    gen_a = UserIdGenerator(0, now_ms=_SAME_MS, rng=random.Random(1))
-    gen_b = UserIdGenerator(1, now_ms=_SAME_MS, rng=random.Random(1))
-    ids = [gen_a.issue() for _ in range(_PER_GEN)]
-    ids += [gen_b.issue() for _ in range(_PER_GEN)]
-    # worker ビットが異なるため全 8192 件が distinct。
-    assert len(set(ids)) == 2 * _PER_GEN
-```
-
-- [x] **Step 2: テストが通ることを確認（既存実装で成立する）**
-
-Run: `docker compose run --rm app uv run pytest tests/test_idgen_collision.py -v`
-Expected: PASS（2件）。stage1 は重複あり、stage2 は重複なし。
-
-- [x] **Step 3: コミット**
-
-```bash
-git add tests/test_idgen_collision.py
-git commit -m "test: demonstrate stage1 collision and stage2 uniqueness"
-```
-
----
-
-### Task 6: 出題用スタブ `ProblemIssuer`
-
-**Files:**
-- Create: `app/idgen/problem.py`, `tests/test_idgen_problem.py`
-
-**Interfaces:** Produces: `class ProblemIssuer:` `def issue(self) -> str`（学習者が実装する穴埋め。初期状態は `NotImplementedError`）。`IdIssuer` を満たす型である。
-
-- [x] **Step 1: スタブの足場テストを書く**
-
-`tests/test_idgen_problem.py`:
-```python
-import pytest
-
-from app.idgen.problem import ProblemIssuer
-
-
-def test_problem_issuer_is_not_implemented_yet():
-    # 学習者がここを実装する。未実装のうちは NotImplementedError。
-    with pytest.raises(NotImplementedError):
-        ProblemIssuer().issue()
-```
-
-- [x] **Step 2: テストが失敗することを確認**
-
-Run: `docker compose run --rm app uv run pytest tests/test_idgen_problem.py -v`
-Expected: FAIL（`app.idgen.problem` が無い）
-
-- [x] **Step 3: `app/idgen/problem.py` を実装**
-
-```python
-class ProblemIssuer:
-    """出題用スタブ。学習者は `issue` を実装してユーザーIDを返す。
-
-    要件（詳細は docs/superpowers/specs の設計書を参照）:
-      - base62（0-9A-Za-z）10文字。
-      - 発行順に文字列ソート可能（先頭に時刻成分）。
-      - 連番を避ける程度の予測困難性。
-      - ステージ2では、並列化（複数コンテナ）でも衝突しないようにする。
-        ヒント: プロセス毎に distinct な worker-id を設定 `WORKER_ID` から受け取る。
-    """
-
-    def issue(self) -> str:
-        raise NotImplementedError("ここにID発行ロジックを実装してください")
-```
-
-- [x] **Step 4: テストが通ることを確認**
-
-Run: `docker compose run --rm app uv run pytest tests/test_idgen_problem.py -v`
-Expected: PASS（1件）
-
-- [x] **Step 5: コミット**
-
-```bash
-git add app/idgen/problem.py tests/test_idgen_problem.py
-git commit -m "feat: add ProblemIssuer stub for learners"
-```
-
----
-
-### Task 7: 設定・ファクトリ・アプリ生成（`create_app`）
-
-**Files:**
-- Modify: `app/core/config.py`, `app/main.py`
-- Create: `app/idgen/factory.py`
-
-**Interfaces:**
-- Consumes: `Settings`, `ProblemIssuer`, `UserIdGenerator`, `IdIssuer`, `routes_health`, `routes_user`(Task 8 で作成。本タスクでは結線のみ先に書くと import エラーになるため、routes_user 結線は Task 8 で行う)。
-- Produces: `Settings.id_strategy: Literal["problem","stage1","stage2"]`, `Settings.worker_id: int`／`build_issuer(settings: Settings) -> IdIssuer`／`create_app(issuer: IdIssuer) -> FastAPI`（`app.state.issuer` に保持）、モジュール変数 `app`。
-
-> 注: 本タスクでは `create_app` に health のみ結線し、`app` を起動可能に保つ。`/users` ルーターは Task 8 で結線する（タスク境界をまたぐ import エラーを避けるため）。
-
-- [x] **Step 1: 設定に id_strategy / worker_id を追加**
-
-`app/core/config.py` を次へ変更（`Settings` 本体を置換）:
-```python
-from functools import lru_cache
-from typing import Literal
-
-from pydantic_settings import BaseSettings, SettingsConfigDict
-
-
-class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
-
-    database_url: str = "postgresql+psycopg://postgres:postgres@db:5432/app"
-    id_strategy: Literal["problem", "stage1", "stage2"] = "problem"
-    worker_id: int = 0
-
-
-@lru_cache
-def get_settings() -> Settings:
-    return Settings()
-```
-
-- [x] **Step 2: `build_issuer` ファクトリを作成**
-
-`app/idgen/factory.py`:
-```python
-from app.core.config import Settings
-from app.idgen.base import IdIssuer
-from app.idgen.generator import UserIdGenerator
-from app.idgen.problem import ProblemIssuer
-
-
-def build_issuer(settings: Settings) -> IdIssuer:
-    if settings.id_strategy == "problem":
-        return ProblemIssuer()
-    if settings.id_strategy == "stage1":
-        # 素朴解: worker-id 無し（全プロセス 0）。並列下で衝突する。
-        return UserIdGenerator(worker_id=0)
-    # stage2: プロセス毎に distinct な worker-id。
-    return UserIdGenerator(worker_id=settings.worker_id)
-```
-
-- [x] **Step 3: `app/main.py` を `create_app` ファクトリへ変更**
-
-```python
-from fastapi import FastAPI
-
-from app.api import routes_health
-from app.core.config import get_settings
-from app.idgen.base import IdIssuer
-from app.idgen.factory import build_issuer
-
-
-def create_app(issuer: IdIssuer) -> FastAPI:
-    application = FastAPI(title="uv_recruit user-id API")
-    application.state.issuer = issuer
-    application.include_router(routes_health.router)
-
-    @application.get("/")
-    async def root() -> dict[str, str]:
-        return {"message": "ok"}
-
-    return application
-
-
-app = create_app(build_issuer(get_settings()))
-```
-
-- [x] **Step 4: 既存テストとゲートが緑であることを確認**
-
-Run: `docker compose run --rm app uv run pytest -q && docker compose run --rm app uv run mypy app`
-Expected: PASS（health/idgen/crud のテストが通る）、mypy エラーなし。
-
-- [x] **Step 5: コミット**
-
-```bash
-git add app/core/config.py app/idgen/factory.py app/main.py
-git commit -m "feat: app factory and issuer selection via ID_STRATEGY"
-```
-
----
-
-### Task 8: `/users` ルーターと API テスト
-
-**Files:**
-- Create: `app/api/routes_user.py`, `tests/test_api_users.py`
-- Modify: `app/main.py`（user ルーター結線）
-- Delete: `app/api/routes_item.py`
-
-**Interfaces:**
-- Consumes: `crud.user`, `get_session`, `IdIssuer`（`request.app.state.issuer`）, `UserCreate`/`UserRead`。
-- Produces: `POST /users`(201, body `UserRead`／衝突時 409)、`GET /users/{user_id}`(200／404)。依存 `get_issuer(request) -> IdIssuer`。
-
-- [x] **Step 1: 旧 item ルーターを削除**（Task 1 で前倒し実施済み：conftest が app.main を import し routes_item が壊れるため）
-
-```bash
-git rm app/api/routes_item.py
-```
-
-- [x] **Step 2: API テストを書く**
-
-`tests/test_api_users.py`:
-```python
-import random
-
-from app.idgen.base import EPOCH_MS
-from app.idgen.generator import UserIdGenerator
-from app.main import app
-
-
-def _install_issuer(start_ms: int = 0):
-    clock = {"ms": start_ms}
-    app.state.issuer = UserIdGenerator(
-        0, now_ms=lambda: EPOCH_MS + clock["ms"], rng=random.Random(0)
-    )
-    return clock
-
-
-async def test_create_user_returns_valid_id(client):
-    _install_issuer()
-    resp = await client.post("/users", json={"name": "alice"})
-    assert resp.status_code == 201
-    body = resp.json()
-    assert len(body["id"]) == 10
-    assert body["name"] == "alice"
-
-
-async def test_get_user(client):
-    _install_issuer()
-    created = (await client.post("/users", json={"name": "bob"})).json()
-    resp = await client.get(f"/users/{created['id']}")
-    assert resp.status_code == 200
-    assert resp.json()["name"] == "bob"
-
-
-async def test_get_missing_user_404(client):
-    resp = await client.get("/users/zzzzzzzzzz")
-    assert resp.status_code == 404
-
-
-async def test_ids_are_sorted_by_issue_order(client):
-    clock = _install_issuer()
-    first = (await client.post("/users", json={"name": "a"})).json()["id"]
-    clock["ms"] = 10
-    second = (await client.post("/users", json={"name": "b"})).json()["id"]
-    assert first < second
-```
-
-- [x] **Step 3: `app/main.py` に user ルーターを結線**
-
-`app/main.py` の import に追加し、`create_app` 内に結線:
-```python
-from app.api import routes_health, routes_user
-```
-`application.include_router(routes_health.router)` の直後に:
-```python
-    application.include_router(routes_user.router)
-```
-
-- [x] **Step 4: テストが失敗することを確認**
-
-Run: `docker compose run --rm app uv run pytest tests/test_api_users.py -v`
-Expected: FAIL（`app.api.routes_user` が無い）
-
-- [x] **Step 5: `app/api/routes_user.py` を実装**
-
-```python
-from typing import cast
-
-from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.crud import user as crud
-from app.db.session import get_session
-from app.idgen.base import IdIssuer
-from app.schemas.user import UserCreate, UserRead
-
-router = APIRouter(prefix="/users", tags=["users"])
-
-
-def get_issuer(request: Request) -> IdIssuer:
-    return cast(IdIssuer, request.app.state.issuer)
-
-
-@router.post("", response_model=UserRead, status_code=status.HTTP_201_CREATED)
-async def create_user(
-    data: UserCreate,
-    session: AsyncSession = Depends(get_session),
-    issuer: IdIssuer = Depends(get_issuer),
-) -> UserRead:
-    user_id = issuer.issue()
-    try:
-        user = await crud.create_user(session, user_id=user_id, name=data.name)
-    except IntegrityError as exc:
-        # 一意制約は「衝突の検出器」であって一意性の保証手段ではない。
-        # アプリ側ロジックが衝突しなければ、ここには到達しない。
-        await session.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail="user id collision"
-        ) from exc
-    return UserRead.model_validate(user, from_attributes=True)
-
-
-@router.get("/{user_id}", response_model=UserRead)
-async def get_user(
-    user_id: str, session: AsyncSession = Depends(get_session)
-) -> UserRead:
-    user = await crud.get_user(session, user_id)
-    if user is None:
-        raise HTTPException(status_code=404, detail="User not found")
-    return UserRead.model_validate(user, from_attributes=True)
-```
-
-- [x] **Step 6: テストが通ることを確認**
-
-Run: `docker compose run --rm app uv run pytest tests/test_api_users.py -v`
-Expected: PASS（4件）
-
-- [x] **Step 7: 全テスト・全ゲートを確認**
-
-Run:
-```bash
-docker compose run --rm app uv run ruff check .
-docker compose run --rm app uv run ruff format --check .
-docker compose run --rm app uv run mypy app
 docker compose run --rm app uv run pytest -q
+docker compose run --rm app uv run ruff check . && docker compose run --rm app uv run mypy app
 ```
 Expected: すべて PASS。
 
-- [x] **Step 8: コミット**
+- [ ] **Step 7: コミット**
 
 ```bash
-git add app/api/routes_user.py app/main.py tests/test_api_users.py
-git commit -m "feat: add /users endpoints with issuer injection"
+git add app/api/routes_user.py app/schemas/user.py app/main.py tests/test_api_users.py
+git commit -m "feat(app): enrich auto-generated OpenAPI (409, examples, metadata)"
 ```
 
 ---
 
-### Task 9: Compose に出題用/解答例サービスを用意
+## グループB — runner（Rust + Axum）
+
+> 実装時、各 crate の最新 API を **context7** で確認する（axum の Router/extractor、sqlx の query マクロ、tokio mpsc、reqwest）。本グループのコードは構造とインターフェースを確定するもの。
+
+### Task 3: runner 雛形（Axum + healthz + コンテナ + ゲート）
 
 **Files:**
-- Modify: `compose.yaml`
+- Create: `runner/Cargo.toml`, `runner/src/main.rs`, `runner/Dockerfile`, `runner/.dockerignore`, `runner/rustfmt.toml`
+- Modify: `compose.yaml`（`runner` サービス追加）
 
-**Interfaces:** Produces: `app`（出題用, `ID_STRATEGY=problem`, host 8000）／`solution`（解答例, `ID_STRATEGY=stage2`, `WORKER_ID=1`, host 8001）。両者は同一イメージ・同一 DB。
+**Interfaces:**
+- Produces: `runner` コンテナが `GET /healthz -> 200 {"status":"ok"}` を返す。`cargo fmt/clippy/test` が緑。
 
-- [x] **Step 1: `compose.yaml` を更新**
+- [ ] **Step 1: クレートと依存を定義**
 
-`app` サービスの `environment` に `ID_STRATEGY` を追加し、`solution` サービスを追記:
+`runner/Cargo.toml`:
+```toml
+[package]
+name = "runner"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+axum = "0.7"
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4", "serde"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "chrono", "macros"] }
+chrono = { version = "0.4", features = ["serde"] }
+tracing = "0.1"
+tracing-subscriber = "0.3"
+
+[dev-dependencies]
+httpmock = "0.7"
+```
+> バージョンは実装時に context7 で最新安定を確認・固定する。
+
+- [ ] **Step 2: healthz だけの失敗するテストを書く**
+
+`runner/src/main.rs`（初期）:
+```rust
+use axum::{routing::get, Json, Router};
+use serde_json::{json, Value};
+
+pub fn app() -> Router {
+    Router::new().route("/healthz", get(healthz))
+}
+
+async fn healthz() -> Json<Value> {
+    Json(json!({"status": "ok"}))
+}
+
+#[tokio::main]
+async fn main() {
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:9000").await.unwrap();
+    axum::serve(listener, app()).await.unwrap();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
+    use tower::ServiceExt; // oneshot
+
+    #[tokio::test]
+    async fn healthz_returns_ok() {
+        let resp = app()
+            .oneshot(Request::builder().uri("/healthz").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+}
+```
+> `tower` を dev/通常依存に追加（`ServiceExt::oneshot` 用）。実装時に context7 で axum テストの推奨形を確認。
+
+- [ ] **Step 3: Dockerfile とサービスを用意**
+
+`runner/Dockerfile`:
+```dockerfile
+FROM rust:1-slim
+WORKDIR /runner
+COPY . .
+RUN cargo build
+CMD ["cargo", "run"]
+```
+`runner/.dockerignore`:
+```
+target
+```
+`compose.yaml` に追加（`volumes:` 宣言の前）:
 ```yaml
-  app:
-    build: .
+  runner:
+    build: ./runner
     environment:
-      DATABASE_URL: postgresql+psycopg://postgres:postgres@db:5432/app
-      ID_STRATEGY: ${ID_STRATEGY:-problem}
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/app
     volumes:
-      - .:/app
-      - venv:/app/.venv
+      - ./runner:/runner
+      - cargo_target:/runner/target
     ports:
-      - "8000:8000"
-    depends_on:
-      db:
-        condition: service_healthy
-
-  solution:
-    build: .
-    environment:
-      DATABASE_URL: postgresql+psycopg://postgres:postgres@db:5432/app
-      ID_STRATEGY: stage2
-      WORKER_ID: "1"
-    volumes:
-      - .:/app
-      - venv:/app/.venv
-    ports:
-      - "8001:8000"
+      - "9000:9000"
     depends_on:
       db:
         condition: service_healthy
 ```
+`volumes:` セクションに `cargo_target:` を追加。
 
-- [x] **Step 2: 両サービスが起動し応答することを確認**
+- [ ] **Step 4: テストとゲートが緑**
 
 Run:
 ```bash
-docker compose up -d --build db solution
-docker compose run --rm app uv run python -c "import httpx; print(httpx.post('http://solution:8000/users', json={'name':'x'}).json())"
-docker compose down
+docker compose run --rm runner cargo test
+docker compose run --rm runner cargo fmt --check
+docker compose run --rm runner cargo clippy -- -D warnings
 ```
-Expected: `solution` が 10文字 ID を返す JSON を出力。
+Expected: すべて PASS。
 
-- [x] **Step 3: コミット**
+- [ ] **Step 5: コミット**
 
 ```bash
-git add compose.yaml
-git commit -m "feat: add problem and solution compose services"
+git add runner compose.yaml
+git commit -m "feat(runner): scaffold Axum service with healthz"
 ```
 
 ---
 
-### Task 10: 並列衝突デモ（LB + 複数ワーカー + 観測スクリプト）
+### Task 4: `jobs` 永続化（sqlx）
 
 **Files:**
-- Create: `compose.demo.yaml`, `demo/nginx.conf`, `scripts/collision_demo.py`
+- Create: `runner/migrations/0001_create_jobs.sql`, `runner/src/store.rs`
+- Modify: `runner/src/main.rs`（`mod store;` と起動時 migrate）
 
-**Interfaces:** Produces: 3 つの app（`app1/app2/app3`, `WORKER_ID=1/2/3`, `ID_STRATEGY` は env 切替）＋ nginx `lb`（host 8080 → 各 app:8000 ラウンドロビン）。`scripts/collision_demo.py` が LB に並列 POST して 201/409/重複を集計。
+**Interfaces:**
+- Produces: `Job` 構造体（`job_id: Uuid`, `target: String`, `n: i64`, `concurrency: i64`, `status: String`, `created_count: i64`, `conflict_count: i64`, `attempt_count: i64`, `started_at`, `finished_at: Option`, `duration_ms: Option<i64>`, `error: Option<String>`）。`JobStore` に `new(pool)`, `insert_running(job)`, `complete(job_id, counts, duration)`, `fail(job_id, error)`, `get(job_id) -> Option<Job>`, `list() -> Vec<Job>`。
 
-- [x] **Step 1: nginx 設定を作成**
+- [ ] **Step 1: マイグレーションを書く**
 
-`demo/nginx.conf`:
-```nginx
-events {}
-http {
-  upstream app_backend {
-    server app1:8000;
-    server app2:8000;
-    server app3:8000;
-  }
-  server {
-    listen 8080;
-    location / {
-      proxy_pass http://app_backend;
+`runner/migrations/0001_create_jobs.sql`:
+```sql
+CREATE TABLE IF NOT EXISTS jobs (
+    job_id        UUID PRIMARY KEY,
+    target        TEXT        NOT NULL,
+    n             BIGINT      NOT NULL,
+    concurrency   BIGINT      NOT NULL,
+    status        TEXT        NOT NULL,
+    created_count BIGINT      NOT NULL DEFAULT 0,
+    conflict_count BIGINT     NOT NULL DEFAULT 0,
+    attempt_count BIGINT      NOT NULL DEFAULT 0,
+    started_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    finished_at   TIMESTAMPTZ,
+    duration_ms   BIGINT,
+    error         TEXT
+);
+```
+
+- [ ] **Step 2: store のテストを書く（DB 結合）**
+
+`runner/src/store.rs` に `#[cfg(test)]` を含め、`insert_running` → `get` → `complete` → `get` が状態遷移することを検証するテストを書く（`DATABASE_URL` 必須、`sqlx::PgPool::connect`、テスト冒頭で `sqlx::migrate!()`）。
+> 具体の sqlx マクロ/型は実装時に context7 で確認。`#[sqlx::test]` の利用可否も確認する。
+
+- [ ] **Step 3: 失敗を確認**
+
+Run: `docker compose run --rm runner cargo test store`
+Expected: FAIL（`store` 未実装）
+
+- [ ] **Step 4: `JobStore` を実装**（`insert_running`/`complete`/`fail`/`get`/`list`、`sqlx::query!`）。`main.rs` の起動時に `sqlx::migrate!("./migrations").run(&pool)` を実行。
+
+- [ ] **Step 5: 通過とゲート**
+
+Run: `docker compose run --rm runner cargo test && docker compose run --rm runner cargo clippy -- -D warnings`
+Expected: PASS。
+
+- [ ] **Step 6: コミット**
+
+```bash
+git add runner
+git commit -m "feat(runner): persist jobs via sqlx (jobs table + JobStore)"
+```
+
+---
+
+### Task 5: 負荷エンジン（tokio＋mpsc＋集約、N成功まで＋安全上限）
+
+**Files:**
+- Create: `runner/src/engine.rs`
+- Modify: `runner/src/main.rs`（`mod engine;`）
+
+**Interfaces:**
+- Produces: `struct RunSpec { target: String, n: u64, concurrency: usize }`、`struct RunResult { created: u64, conflicts: u64, attempts: u64 }`、`async fn run_load(spec: RunSpec, client: reqwest::Client, max_attempts: u64) -> RunResult`。
+- 設計: `concurrency` 個の負荷タスクが `POST {target}/users` を投げ、結果（Created/Conflict/Other）を `tokio::sync::mpsc` で**単一の集約器**へ送る。集約器が `created`/`conflicts`/`attempts` を更新し、`created >= n` か `attempts >= max_attempts` で停止信号（`tokio::sync::Notify` か `AtomicBool`）。**DB には触れない**（純ロジック）。
+
+- [ ] **Step 1: 集約ロジックの単体テストを書く**
+
+`runner/src/engine.rs` の `#[cfg(test)]`：`httpmock` で 201 を返すモックサーバを立て、`run_load(n=50, concurrency=8, max_attempts=1000)` が `created == 50` を返すことを検証。別テストで「409 を一定割合返すモック」に対し `conflicts > 0 && created == n` を検証。
+
+- [ ] **Step 2: 失敗を確認**
+
+Run: `docker compose run --rm runner cargo test engine`
+Expected: FAIL（`engine` 未実装）
+
+- [ ] **Step 3: `run_load` を実装**
+
+要点（実装時に context7 で reqwest/tokio の最新形を確認）:
+```rust
+// 擬似構造（細部は最新APIに合わせる）
+pub async fn run_load(spec: RunSpec, client: reqwest::Client, max_attempts: u64) -> RunResult {
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<Outcome>(spec.concurrency * 2);
+    let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    // 負荷タスク: stop が立つまで POST し続け、結果を tx で送る
+    let mut handles = Vec::new();
+    for _ in 0..spec.concurrency {
+        let (tx, stop, client, target) = (tx.clone(), stop.clone(), client.clone(), spec.target.clone());
+        handles.push(tokio::spawn(async move {
+            while !stop.load(std::sync::atomic::Ordering::Relaxed) {
+                let outcome = post_one(&client, &target).await;
+                if tx.send(outcome).await.is_err() { break; }
+            }
+        }));
     }
-  }
+    drop(tx);
+    // 集約器（このタスク自身）
+    let (mut created, mut conflicts, mut attempts) = (0u64, 0u64, 0u64);
+    while let Some(o) = rx.recv().await {
+        attempts += 1;
+        match o { Outcome::Created => created += 1, Outcome::Conflict => conflicts += 1, Outcome::Other => {} }
+        if created >= spec.n || attempts >= max_attempts {
+            stop.store(true, std::sync::atomic::Ordering::Relaxed);
+            break;
+        }
+    }
+    for h in handles { let _ = h.await; }
+    RunResult { created, conflicts, attempts }
 }
 ```
 
-- [x] **Step 2: デモ用 compose を作成**（各 app に専用 venv volume。共有 volume だと uv sync が競合する）
+- [ ] **Step 4: 通過とゲート**
 
-`compose.demo.yaml`:
-```yaml
-services:
-  app1:
-    build: .
-    environment:
-      DATABASE_URL: postgresql+psycopg://postgres:postgres@db:5432/app
-      ID_STRATEGY: ${ID_STRATEGY:-stage1}
-      WORKER_ID: "1"
-    volumes:
-      - .:/app
-      - venv:/app/.venv
-    depends_on:
-      db:
-        condition: service_healthy
+Run: `docker compose run --rm runner cargo test && docker compose run --rm runner cargo clippy -- -D warnings`
+Expected: PASS。
 
-  app2:
-    build: .
-    environment:
-      DATABASE_URL: postgresql+psycopg://postgres:postgres@db:5432/app
-      ID_STRATEGY: ${ID_STRATEGY:-stage1}
-      WORKER_ID: "2"
-    volumes:
-      - .:/app
-      - venv:/app/.venv
-    depends_on:
-      db:
-        condition: service_healthy
-
-  app3:
-    build: .
-    environment:
-      DATABASE_URL: postgresql+psycopg://postgres:postgres@db:5432/app
-      ID_STRATEGY: ${ID_STRATEGY:-stage1}
-      WORKER_ID: "3"
-    volumes:
-      - .:/app
-      - venv:/app/.venv
-    depends_on:
-      db:
-        condition: service_healthy
-
-  lb:
-    image: nginx:alpine
-    volumes:
-      - ./demo/nginx.conf:/etc/nginx/nginx.conf:ro
-    ports:
-      - "8080:8080"
-    depends_on:
-      - app1
-      - app2
-      - app3
-```
-
-> `ID_STRATEGY=stage1`（既定）では3台とも worker_id=0 扱い → 衝突する。`ID_STRATEGY=stage2` では各台が `WORKER_ID` 1/2/3 を使う → 衝突しない。
-
-- [x] **Step 3: 観測スクリプトを作成**（dead code 除去・既定負荷を引き上げ）
-
-`scripts/collision_demo.py`:
-```python
-import asyncio
-import os
-
-import httpx
-
-TARGET = os.environ.get("TARGET_URL", "http://localhost:8080")
-TOTAL = int(os.environ.get("TOTAL", "3000"))
-CONCURRENCY = int(os.environ.get("CONCURRENCY", "50"))
-
-
-async def _worker(client: httpx.AsyncClient, results: list[tuple[int, str | None]]) -> None:
-    while True:
-        try:
-            idx = _worker.counter  # type: ignore[attr-defined]
-        except AttributeError:
-            idx = 0
-        # シンプルなカウンタ消費
-        async with _lock:
-            if _state["sent"] >= TOTAL:
-                return
-            _state["sent"] += 1
-        resp = await client.post(f"{TARGET}/users", json={"name": "u"})
-        if resp.status_code == 201:
-            results.append((201, resp.json()["id"]))
-        else:
-            results.append((resp.status_code, None))
-
-
-_lock = asyncio.Lock()
-_state = {"sent": 0}
-
-
-async def main() -> None:
-    results: list[tuple[int, str | None]] = []
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        await asyncio.gather(
-            *[_worker(client, results) for _ in range(CONCURRENCY)]
-        )
-    created = [i for s, i in results if s == 201 and i is not None]
-    conflicts = sum(1 for s, _ in results if s == 409)
-    distinct = len(set(created))
-    print(f"target={TARGET} total_sent={_state['sent']}")
-    print(f"created(201)={len(created)} conflicts(409)={conflicts}")
-    print(f"distinct_ids={distinct} duplicate_ids={len(created) - distinct}")
-    if conflicts or len(created) != distinct:
-        print(">>> 衝突を観測しました（stage1 の素朴解）")
-    else:
-        print(">>> 衝突なし（stage2 の修正後）")
-
-
-if __name__ == "__main__":
-    asyncio.run(main())
-```
-
-- [x] **Step 4: 素朴解（stage1）で衝突を観測**（TOTAL=12000/CONCURRENCY=250 で conflicts(409)=1 を観測）
-
-Run:
-```bash
-docker compose down -v
-ID_STRATEGY=stage1 docker compose -f compose.yaml -f compose.demo.yaml up -d --build db app1 app2 app3 lb
-docker compose run --rm -e TARGET_URL=http://lb:8080 app uv run python scripts/collision_demo.py
-docker compose -f compose.yaml -f compose.demo.yaml down -v
-```
-Expected: `conflicts(409)` が 1 以上、または `duplicate_ids` が 1 以上 →「衝突を観測しました」。
-
-- [x] **Step 5: 修正後（stage2）で衝突しないことを確認**（同負荷で conflicts=0, duplicate_ids=0）
-
-Run:
-```bash
-docker compose down -v
-ID_STRATEGY=stage2 docker compose -f compose.yaml -f compose.demo.yaml up -d --build db app1 app2 app3 lb
-docker compose run --rm -e TARGET_URL=http://lb:8080 app uv run python scripts/collision_demo.py
-docker compose -f compose.yaml -f compose.demo.yaml down -v
-```
-Expected: `conflicts(409)=0`, `duplicate_ids=0` →「衝突なし」。
-
-- [x] **Step 6: コミット**
+- [ ] **Step 5: コミット**
 
 ```bash
-git add compose.demo.yaml demo/nginx.conf scripts/collision_demo.py
-git commit -m "feat: parallel collision demo (lb + workers + observer script)"
+git add runner
+git commit -m "feat(runner): load engine (tokio + mpsc aggregator, run-until-N)"
 ```
 
 ---
 
-### Task 11: ドキュメント整備・最終ゲート・引き継ぎ整理
+### Task 6: ジョブAPI（`POST /runs` / `GET /runs` / `GET /runs/{job_id}`）
+
+**Files:**
+- Create: `runner/src/api.rs`
+- Modify: `runner/src/main.rs`（ルーティング結線、`AppState { store, client }`）
+
+**Interfaces:**
+- Consumes: `JobStore`, `run_load`。
+- Produces:
+  - `POST /runs` body `{ job_id: Uuid, target: String, n: u64, concurrency: usize }` → `insert_running` 後、`tokio::spawn` で `run_load` を実行し完了時に `store.complete(...)`。**即 202** を返す。
+  - `GET /runs` → `Vec<Job>`（200）。`GET /runs/{job_id}` → `Job`（200）/404。
+
+- [ ] **Step 1: API 結合テストを書く**
+
+`runner/tests/api.rs`：`httpmock` のモック target を立て、`POST /runs`（小さい n）→ 202、ポーリングで `GET /runs/{job_id}` が `status=="completed"` かつ `created==n` になることを検証。
+> 実DB必須。テストは `DATABASE_URL` 前提。
+
+- [ ] **Step 2: 失敗を確認**
+
+Run: `docker compose run --rm runner cargo test --test api`
+Expected: FAIL（`/runs` 未実装）
+
+- [ ] **Step 3: `api.rs` を実装**し `main.rs` に結線（`/healthz` も維持）。`POST /runs` は `spawn` で非同期実行、`max_attempts` は `n * 4 + 10_000` 等の安全上限。
+
+- [ ] **Step 4: 通過とゲート**
+
+Run:
+```bash
+docker compose run --rm runner cargo test
+docker compose run --rm runner cargo fmt --check && docker compose run --rm runner cargo clippy -- -D warnings
+```
+Expected: すべて PASS。
+
+- [ ] **Step 5: コミット**
+
+```bash
+git add runner
+git commit -m "feat(runner): async job API (POST/GET /runs with spawned load)"
+```
+
+---
+
+## グループC — web（Vue 3 + Vite + TypeScript）
+
+> Vite/Vue/Vitest/ESLint の最新セットアップは実装時に **context7** で確認。
+
+### Task 7: web 雛形（Vite+Vue+TS, コンテナ, /api プロキシ, ゲート）
+
+**Files:**
+- Create: `web/package.json`, `web/vite.config.ts`, `web/tsconfig.json`, `web/index.html`, `web/src/main.ts`, `web/src/App.vue`, `web/.eslintrc.cjs`, `web/Dockerfile`, `web/.dockerignore`
+- Modify: `compose.yaml`（`web` サービス）
+
+**Interfaces:**
+- Produces: `web` コンテナが Vite dev サーバ（`5173`）でアプリ shell を配信。`/api/app/*`→app、`/api/runner/*`→runner にプロキシ。`npm run typecheck`/`lint`/`test` が緑。
+
+- [ ] **Step 1: scaffolding を生成**
+
+Run（コンテナ内、node イメージで一時生成 or 手書き）:
+```bash
+docker run --rm -v "$PWD/web":/web -w /web node:22-slim sh -c "npm create vite@latest . -- --template vue-ts && npm i && npm i -D vitest @vue/test-utils eslint"
+```
+> 生成物はコミット対象。`package.json` の scripts に `typecheck: "vue-tsc --noEmit"`, `lint: "eslint src"`, `test: "vitest run"` を追加。
+
+- [ ] **Step 2: プロキシを設定**
+
+`web/vite.config.ts` の `server` に:
+```ts
+server: {
+  host: true,
+  proxy: {
+    "/api/app": { target: "http://app:8000", rewrite: p => p.replace(/^\/api\/app/, "") },
+    "/api/runner": { target: "http://runner:9000", rewrite: p => p.replace(/^\/api\/runner/, "") },
+  },
+},
+```
+
+- [ ] **Step 3: Dockerfile とサービス**
+
+`web/Dockerfile`:
+```dockerfile
+FROM node:22-slim
+WORKDIR /web
+COPY package*.json ./
+RUN npm ci
+COPY . .
+CMD ["npm", "run", "dev", "--", "--host"]
+```
+`compose.yaml` に `web` サービス（`build: ./web`、`ports: ["5173:5173"]`、`volumes: ./web:/web` と匿名 `/web/node_modules`、`depends_on: [app, runner]`）。
+
+- [ ] **Step 4: 起動とゲートを確認**
+
+Run:
+```bash
+docker compose run --rm web npm run typecheck
+docker compose run --rm web npm run lint
+docker compose up -d --build web && sleep 3 && curl -s -o /dev/null -w "%{http_code}" http://localhost:5173 ; docker compose down
+```
+Expected: typecheck/lint PASS、HTTP 200。
+
+- [ ] **Step 5: コミット**
+
+```bash
+git add web compose.yaml
+git commit -m "feat(web): scaffold Vue+Vite app with /api proxy"
+```
+
+---
+
+### Task 8: ID 検証の純関数（TDD, Vitest）
+
+**Files:**
+- Create: `web/src/lib/validate.ts`, `web/src/lib/validate.test.ts`
+
+**Interfaces:**
+- Produces: `isBase62(s): boolean`, `isLen10(s): boolean`, `isSortedAfter(prev, cur): boolean`, `validateId(s): {len: boolean, charset: boolean}`, `summarize(ids: string[]): {total, valid, invalid, sortedOk}`。
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`web/src/lib/validate.test.ts`:
+```ts
+import { describe, it, expect } from "vitest";
+import { isBase62, isLen10, summarize } from "./validate";
+
+describe("validate", () => {
+  it("accepts base62 length-10", () => {
+    expect(isBase62("0uLvI2MYQL")).toBe(true);
+    expect(isLen10("0uLvI2MYQL")).toBe(true);
+  });
+  it("rejects non-base62 / wrong length", () => {
+    expect(isBase62("0uLvI2-MYQ")).toBe(false);
+    expect(isLen10("short")).toBe(false);
+  });
+  it("summarize counts invalid and sort order", () => {
+    const s = summarize(["0000000001", "0000000002", "bad_id!!"]);
+    expect(s.total).toBe(3);
+    expect(s.invalid).toBe(1);
+    expect(s.sortedOk).toBe(true);
+  });
+});
+```
+
+- [ ] **Step 2: 失敗を確認**
+
+Run: `docker compose run --rm web npm run test`
+Expected: FAIL（`validate` 未実装）
+
+- [ ] **Step 3: `validate.ts` を実装**
+
+```ts
+const BASE62 = /^[0-9A-Za-z]+$/;
+export const isBase62 = (s: string) => BASE62.test(s);
+export const isLen10 = (s: string) => s.length === 10;
+export const isSortedAfter = (prev: string, cur: string) => cur > prev;
+export const validateId = (s: string) => ({ len: isLen10(s), charset: isBase62(s) });
+
+export function summarize(ids: string[]) {
+  let invalid = 0;
+  let sortedOk = true;
+  for (let i = 0; i < ids.length; i++) {
+    const v = validateId(ids[i]);
+    if (!v.len || !v.charset) invalid++;
+    if (i > 0 && !isSortedAfter(ids[i - 1], ids[i])) sortedOk = false;
+  }
+  return { total: ids.length, valid: ids.length - invalid, invalid, sortedOk };
+}
+```
+
+- [ ] **Step 4: 通過を確認**
+
+Run: `docker compose run --rm web npm run test`
+Expected: PASS。
+
+- [ ] **Step 5: コミット**
+
+```bash
+git add web/src/lib/validate.ts web/src/lib/validate.test.ts
+git commit -m "feat(web): id validation pure functions with tests"
+```
+
+---
+
+### Task 9: 単発発行＋一覧＋妥当性可視化UI
+
+**Files:**
+- Create: `web/src/lib/api.ts`, `web/src/components/IssuePanel.vue`, `web/src/components/UserTable.vue`
+- Modify: `web/src/App.vue`
+
+**Interfaces:**
+- Consumes: `validate.ts`、`/api/app` の `POST /users`・`GET /users`。
+- Produces: `api.ts` に `createUser(name): Promise<UserRead>`, `listUsers(limit, offset): Promise<UserRead[]>`。UI は単発発行ボタン、発行ID一覧、妥当性バッジ（10桁/base62/ソート整合）と未達件数。
+
+- [ ] **Step 1: api クライアントを実装**（`fetch("/api/app/users", ...)`）。`UserRead` 型を定義。
+- [ ] **Step 2: `IssuePanel.vue`**（名前入力＋発行ボタン→`createUser`→一覧更新）と **`UserTable.vue`**（`listUsers`＋`summarize` でバッジ・件数表示）を実装、`App.vue` に組み込む。
+- [ ] **Step 3: 手動確認**
+
+Run:
+```bash
+docker compose up -d --build db app web
+# ブラウザ http://localhost:5173 で発行→一覧に10桁IDとバッジが出る
+docker compose down
+```
+Expected: 発行が成功し、妥当なIDが緑バッジで一覧表示。
+
+- [ ] **Step 4: ゲート＆コミット**
+
+```bash
+docker compose run --rm web npm run typecheck && docker compose run --rm web npm run lint
+git add web/src
+git commit -m "feat(web): single-issue UI with validity visualization"
+```
+
+---
+
+### Task 10: ジョブ起動UI（job-id採番・一覧・詳細・完了待ち）
+
+**Files:**
+- Create: `web/src/components/JobLauncher.vue`, `web/src/components/JobList.vue`, `web/src/components/JobDetail.vue`
+- Modify: `web/src/lib/api.ts`, `web/src/App.vue`
+
+**Interfaces:**
+- Consumes: `/api/runner` の `POST /runs`・`GET /runs`・`GET /runs/{job_id}`。
+- Produces: `api.ts` に `startRun(spec): Promise<void>`（`spec.job_id` はフロントで `crypto.randomUUID()` 採番）、`listRuns()`, `getRun(jobId)`。UI は target（app/lb）・N・並列度（1/100/1000）を選び起動→ジョブ一覧→詳細で `status`/`created`/`conflict_count` をポーリング表示。
+
+- [ ] **Step 1: api を拡張**（`startRun`/`listRuns`/`getRun`、`RunJob` 型）。
+- [ ] **Step 2: UI を実装**（`JobLauncher` で `job_id = crypto.randomUUID()` を採番して `POST /runs`、`JobList`＋`JobDetail` で 1〜2秒間隔ポーリング、完了で結果固定表示）。
+- [ ] **Step 3: 手動確認**（Task 11 のスタックで実施）。
+- [ ] **Step 4: ゲート＆コミット**
+
+```bash
+docker compose run --rm web npm run typecheck && docker compose run --rm web npm run lint
+git add web/src
+git commit -m "feat(web): job launcher + list/detail with polling"
+```
+
+---
+
+## グループD — 統合
+
+### Task 11: compose 統合とエンドツーエンド衝突体験
+
+**Files:**
+- Modify: `compose.yaml`（runner を demo スタックでも使えるよう確認）, 必要なら `compose.demo.yaml`
+
+**Interfaces:** Produces: `web`(5173)・`app`(8000)・`runner`(9000)・`db`・（demo時）`lb`+`app1/2/3` が協調。runner の target を `lb:8080` にして並列100/1000で 409 を観測、stage2 で 0 を確認。
+
+- [ ] **Step 1: フルスタックを起動**
+
+Run:
+```bash
+docker compose up -d --build db app runner web
+```
+Expected: 4サービス healthy/起動。`curl localhost:9000/healthz` が `{"status":"ok"}`。
+
+- [ ] **Step 2: ステージ1（単一・並列1）でジョブ実行**
+
+ブラウザ `http://localhost:5173`：target=app、N=200、並列度=1 で起動 → 詳細で `conflict_count=0`、`created=200`。
+
+- [ ] **Step 3: 衝突スタック（stage1, 並列1000）**
+
+Run:
+```bash
+ID_STRATEGY=stage1 docker compose -f compose.yaml -f compose.demo.yaml up -d --build db app1 app2 app3 lb runner web
+```
+ブラウザ：target=lb、N=8000、並列度=1000 で起動 → 詳細で `conflict_count >= 1`（衝突観測）。
+
+- [ ] **Step 4: 修正スタック（stage2, 並列1000）**
+
+Run:
+```bash
+ID_STRATEGY=stage2 docker compose -f compose.yaml -f compose.demo.yaml up -d --build db app1 app2 app3 lb runner web
+```
+ブラウザ：同条件 → `conflict_count = 0`（衝突なし）。終了後 `docker compose -f compose.yaml -f compose.demo.yaml down -v`。
+
+- [ ] **Step 5: コミット**
+
+```bash
+git add compose.yaml compose.demo.yaml
+git commit -m "feat: integrate web+runner into compose stacks (e2e collision demo)"
+```
+
+---
+
+## グループE — docs（VitePress チュートリアル）
+
+### Task 12: VitePress 雛形（ナビ・Mermaid・コンテナプレビュー）
+
+**Files:**
+- Create: `docs/tutorial/package.json`, `docs/tutorial/.vitepress/config.ts`, `docs/tutorial/index.md`, `docs/tutorial/Dockerfile`
+- Modify: `compose.yaml`（任意の `docs` サービス）
+
+**Interfaces:** Produces: `docs` コンテナが VitePress dev（`5174`）でサイトを配信。サイドバーに 7 章。Mermaid が描画される。
+
+- [ ] **Step 1: VitePress を導入**
+
+Run:
+```bash
+docker run --rm -v "$PWD/docs/tutorial":/d -w /d node:22-slim sh -c "npm init -y && npm i -D vitepress vitepress-plugin-mermaid mermaid"
+```
+`package.json` scripts に `docs:dev: "vitepress dev --host --port 5174"`, `docs:build: "vitepress build"`。
+
+- [ ] **Step 2: 設定とトップページ**
+
+`docs/tutorial/.vitepress/config.ts`（Mermaid 有効化・サイドバー7章・日本語フォントは既定で可、必要なら CSS で Noto Sans JP を指定）。`index.md` にイントロ。
+> Mermaid プラグインの結線方法は実装時に context7 で確認。
+
+- [ ] **Step 3: 起動確認**
+
+Run:
+```bash
+docker compose up -d --build docs && sleep 4 && curl -s -o /dev/null -w "%{http_code}" http://localhost:5174 ; docker compose down
+```
+Expected: HTTP 200。
+
+- [ ] **Step 4: コミット**
+
+```bash
+git add docs/tutorial compose.yaml
+git commit -m "docs: scaffold VitePress tutorial site (nav + mermaid)"
+```
+
+---
+
+### Task 13: チュートリアル本文（7章・curl/Swagger・Mermaid・実機確認）
+
+**Files:**
+- Create: `docs/tutorial/01-intro.md` … `docs/tutorial/07-appendix.md`
+
+**Interfaces:** Produces: 設計書 §6.1 の7章。各章はコピペ可能な手順、curl、Swagger 誘導、Mermaid 図を含む。
+
+- [ ] **Step 1: 01 イントロ / Webの基本構成**（Mermaid で stage1=LBなし / stage2=LB登場の対比図）。
+- [ ] **Step 2: 02 環境を立ち上げる**（`docker compose up`、各URL: API `/docs`・web 5173・runner 9000・docs 5174）。
+- [ ] **Step 3: 03 APIに触れる**（Swagger `/docs` の Try it out ＋ 同等 curl: `curl -X POST localhost:8000/users -H 'Content-Type: application/json' -d '{"name":"alice"}'` と `curl localhost:8000/users`）。
+- [ ] **Step 4: 04 ステージ1**（`ProblemIssuer.issue` 穴埋め要件、web 単発発行、`pytest tests/test_idgen_problem.py`）。
+- [ ] **Step 5: 05 衝突を観測**（demo スタック起動、web のジョブで並列1→100→1000、ジョブ詳細の `conflict_count`、鳩の巣の定量説明＝設計書第5章を引用）。
+- [ ] **Step 6: 06 ステージ2**（worker-id 修正、再観測で 0、解答例 API との対比）。
+- [ ] **Step 7: 07 付録**（IDビット構造の図、設計判断、トラブルシュート）。
+- [ ] **Step 8: 実機確認**（各章のコマンドを実際に1度なぞって通ることを確認）。
+- [ ] **Step 9: コミット**
+
+```bash
+git add docs/tutorial
+git commit -m "docs: write 7-chapter tutorial (curl/swagger/mermaid)"
+```
+
+---
+
+## グループF — 仕上げ
+
+### Task 14: README 整理・全言語ゲート・引き継ぎ
 
 **Files:**
 - Modify: `README.md`
 
-**Interfaces:** Produces: 教材の使い方（2ステージ・出題/解答・衝突デモ）を README に記載。（旧 `tasks.md` は計画着手前に削除済み。）
+**Interfaces:** Produces: README は概要＋各URL＋チュートリアルへの誘導に整理。全ゲート緑。
 
-- [x] **Step 1: README を教材内容へ更新**
+- [ ] **Step 1: README を整理**（教材の入口・各サービスURL・「詳細は docs/tutorial」へ誘導。冗長な手順はチュートリアルへ移し重複を排除）。
 
-`README.md` に次の節を追加（既存の起動/開発コマンド節は維持し、`Item` への言及を `users` に置換）:
-```markdown
-## 教材：ユーザーID発行API
-
-設計書: `docs/superpowers/specs/2026-06-28-user-id-issuance-teaching-design.md`
-
-### ステージ1：ID発行ロジックを書く
-- 出題用 API（`ID_STRATEGY=problem`）の `app/idgen/problem.py` の `ProblemIssuer.issue` を実装する。
-- 要件: base62(0-9A-Za-z) 10文字 / 発行順ソート可 / 連番回避 / 最大100億件以上。
-- 確認: `docker compose run --rm app uv run pytest tests/test_idgen_problem.py`
-
-### ステージ2：並列化しても衝突させない
-- 複数コンテナ（LB配下）で発行しても ID が重複しないようにする。
-- 解答例: `app/idgen/generator.py`（プロセス毎に distinct な `WORKER_ID`）。
-- 衝突を観測 → 修正を確認:
-  ```bash
-  # 素朴解（衝突する）
-  ID_STRATEGY=stage1 docker compose -f compose.yaml -f compose.demo.yaml up -d --build db app1 app2 app3 lb
-  docker compose run --rm -e TARGET_URL=http://lb:8080 app uv run python scripts/collision_demo.py
-  # 修正後（衝突しない）
-  ID_STRATEGY=stage2 docker compose -f compose.yaml -f compose.demo.yaml up -d --build db app1 app2 app3 lb
-  docker compose run --rm -e TARGET_URL=http://lb:8080 app uv run python scripts/collision_demo.py
-  ```
-
-### 解答例 API
-`docker compose up solution`（http://localhost:8001/docs）で stage2 実装を直接試せる。
-```
-
-- [x] **Step 2: 全ゲートを最終確認**（ruff/format/mypy/pytest すべて緑、23 passed）
+- [ ] **Step 2: 全言語ゲートを最終確認**
 
 Run:
 ```bash
-docker compose run --rm app uv run ruff check .
-docker compose run --rm app uv run ruff format --check .
-docker compose run --rm app uv run mypy app
-docker compose run --rm app uv run pytest -q
+docker compose run --rm app uv run ruff check . && docker compose run --rm app uv run ruff format --check . && docker compose run --rm app uv run mypy app && docker compose run --rm app uv run pytest -q
+docker compose run --rm runner cargo fmt --check && docker compose run --rm runner cargo clippy -- -D warnings && docker compose run --rm runner cargo test
+docker compose run --rm web npm run typecheck && docker compose run --rm web npm run lint && docker compose run --rm web npm run test
 ```
 Expected: すべて PASS。
 
-- [x] **Step 3: コミット**
+- [ ] **Step 3: コミット**
 
 ```bash
 git add README.md
-git commit -m "docs: document user-id issuance teaching material"
+git commit -m "docs: streamline README to onboard via tutorial"
 ```
 
 ---
 
 ## Self-Review（計画作成者による点検結果）
 
-- **Spec coverage**: 目的/2ステージ(§2)→Task6/8・Task5・Task10。ID要件(§3)→Task3/4。ID構造(§4)→Task3/4 の定数とパッキング。衝突観測の定量(§5)→Task5（鳩の巣で決定的）＋Task10（実機）。リポ構成(§6 出題/解答併置)→Task7 factory＋Task9 services。テスト方針(§7)→各 Task の TDD。原則対応(§8)→共通コア共有＋worker-id 差分。未確定(§9 worker-id 機構/LB)→Task10 で nginx＋明示 WORKER_ID として確定。
-- **Placeholder scan**: 各ステップに実コードを記載。`ProblemIssuer` の `NotImplementedError` は仕様上の意図的スタブ（学習者の穴埋め）。
-- **Type consistency**: `IdIssuer.issue() -> str`、`build_issuer(Settings)->IdIssuer`、`create_app(IdIssuer)->FastAPI`、`UserIdGenerator(worker_id, *, now_ms, rng)`、`create_user(session,*,user_id,name)` を全タスクで一致させた。`get_issuer` は `cast(IdIssuer, ...)` で mypy strict 対応。
+- **Spec coverage**: §3.1 一覧→Task1。§3.2 OpenAPI→Task2。§4 runner（ジョブ/エンジン/分離・非ボトルネック記録）→Task3–6。§5 web（単発・ジョブ・妥当性・台帳=ジョブ詳細）→Task7–10。§7 統合→Task11。§6 チュートリアル→Task12–13。README/最終ゲート→Task14。非目標（per-409記録なし・スライドなし・worker-id明示維持）は計画全体で遵守。
+- **Placeholder scan**: Python は完全コード。Rust/Vue/VitePress は構造・主要コード・正確なコマンド・テスト仕様を記載し、バージョン依存 API は「context7 で確認」と明示（生成系 scaffolding はコマンドで生成）。
+- **Type consistency**: `RunSpec/RunResult/Job`（runner）、`startRun(spec.job_id=randomUUID)`/`getRun`/`listRuns`（web↔runner）、`createUser`/`listUsers`（web↔app）、`GET /users`→`list[UserRead]`（app）を各タスク間で一致させた。runner の `POST /runs` body `{job_id,target,n,concurrency}` は Task6 と Task10 で一致。
 
 ## 既知の留意点（実装時に注意）
 
-- stage2 は **1コンテナ=1プロセス=1 worker_id**。uvicorn を多 worker で動かすと同一 WORKER_ID を共有して衝突するため、デモは1 worker（`--reload` 既定）で行う。
-- 並列衝突は実機(Task10)では負荷依存で確率的。`TOTAL`/`CONCURRENCY` を上げれば再現性が増す。決定的な教材的証明は Task5 の単体テストが担う。
-- dev で旧 `items` テーブルが残る場合は `docker compose down -v` でリセットしてから Task2 のマイグレーションを適用する。
+- **記録の非ボトルネック化**は runner の肝。負荷タスク→mpsc→単一集約器→ジョブ単位 DB 書き込み、を崩さない（per-リクエストの DB 書き込みを足さない）。
+- 並列衝突は実機では負荷依存。stage1 で確実に見せるには並列度を上げる（1000）。決定的証明は既存の `tests/test_idgen_collision.py`（前フェーズ）。
+- runner は同一 PostgreSQL の **別テーブル `jobs`** を sqlx 自前マイグレーションで管理（app の Alembic とは独立）。
+- すべて新規 Node/Rust コマンドも**コンテナ内**で実行。`target`(cargo) と `node_modules` はボリュームで分離しホットリロードを保つ。
