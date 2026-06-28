@@ -886,7 +886,7 @@ git commit -m "docs: streamline README to onboard via tutorial"
 - **言語横断は独立**: app / runner / web / docs はそれぞれ独立に更新（直交性）。1 サービスずつ「更新→ゲート→コミット」を回し、破壊時の切り分けを容易にする。
 - すべて**コンテナ内**で実行。
 
-- [ ] **Step 1: app（Python）**
+- [x] **Step 1: app（Python）** ✓ pytest 8→9 等、ゲート緑
 
 `docker compose run --rm app sh -c "uv lock --upgrade"` で lock を最新化（pyproject の制約内で最大化）。制約自体を上げたい場合は pyproject の下限/上限を見直してから `uv lock --upgrade`。その後ゲート:
 ```bash
@@ -894,7 +894,7 @@ docker compose run --rm app uv run ruff check . && docker compose run --rm app u
 ```
 緑を確認してコミット（`git add pyproject.toml uv.lock`）。
 
-- [ ] **Step 2: runner（Rust）— crate と Edition**
+- [x] **Step 2: runner（Rust）— crate と Edition** ✓ edition 2021→2024 / sqlx 0.9 / reqwest 0.13 / httpmock 0.8、ゲート緑
 
 まず crate を最新化: `docker compose run --rm runner cargo update`（semver 範囲内）。さらに **Cargo.toml の各依存のメジャー/マイナー指定を最新安定へ引き上げ**（context7 で axum/sqlx/tokio/reqwest/uuid/chrono/tracing/httpmock/tower の最新安定を確認し、相互互換を保って固定）。**Edition は 2021→2024** へ（`edition = "2024"`; Rust 2024 は stable）。Edition 移行は `cargo fix --edition` を活用し、手動修正が要る箇所（2024 の規則変更: unsafe extern、prelude 変更、クロージャキャプチャ等）を潰す。ゲート:
 ```bash
@@ -903,7 +903,7 @@ docker compose run --rm runner cargo fmt --check && docker compose run --rm runn
 ```
 ベースイメージ `rust:1-slim` が edition 2024 を解釈できる版か確認（必要なら Dockerfile の Rust バージョンも引き上げ）。緑を確認してコミット（`git add runner`）。
 
-- [ ] **Step 3: web（Vue/Vite）**
+- [x] **Step 3: web（Vue/Vite）** ✓ vue 3.5.39、ゲート緑
 
 `docker compose run --rm web sh -c "npm update"` で semver 範囲内更新。メジャー更新（vite/vue/vitest/eslint/typescript-eslint 等）は context7 で互換を確認しつつ `package.json` のレンジを引き上げ→`npm install`→lock 更新。`npm ci` を使う Dockerfile があるため **lock を必ず更新・コミット**。ゲート:
 ```bash
@@ -912,15 +912,15 @@ docker compose build web   # npm ci が新 lock で通ることを確認
 ```
 緑を確認してコミット（`git add web/package.json web/package-lock.json`）。
 
-- [ ] **Step 4: docs（VitePress, Task 12 完了後のみ）**
+- [x] **Step 4: docs（VitePress）** ✓ build 緑、package-lock の name 修正
 
 `docs/tutorial` で同様に `npm update`＋メジャーは互換確認のうえ引き上げ→lock 更新。`docs:build` が通ることを確認してコミット。
 
-- [ ] **Step 5: 全ゲート最終確認（Task 14 の最終ゲートと同等を再走）**
+- [x] **Step 5: 全ゲート最終確認** ✓ controller が app25/runner9/web5/docs-build を再走し全緑
 
 3〜4 言語すべてのゲートを通しで緑にし、e2e（Task 11 の衝突体験）が依然成立することを確認。
 
-- [ ] **Step 6: コミット/まとめ**
+- [x] **Step 6: コミット/まとめ** ✓ サービス毎に個別コミット（c96461f/631e19c/a1a9bb3/ca7523d）
 
 各 Step で個別コミット済みなら、最後に差分の要約を残す（更新前後の主要バージョン表を report かコミット本文に）。
 
