@@ -7,10 +7,10 @@ hero:
   actions:
     - theme: brand
       text: チュートリアルを始める →
-      link: /01-intro
+      link: /01-web-basics
     - theme: alt
       text: 環境を立ち上げる
-      link: /02-setup
+      link: /02-stack-setup
 ---
 
 ## このチュートリアルについて
