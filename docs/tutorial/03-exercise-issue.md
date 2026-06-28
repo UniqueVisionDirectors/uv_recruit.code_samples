@@ -20,7 +20,6 @@
 | --- | --- |
 | `self._now_ms()` | 現在時刻（ミリ秒）を返す |
 | `self._rng` | 乱数生成器 |
-| `self._worker_id` | プロセスの識別子 |
 
 また `app/idgen/base.py` には、整数を base62 の10文字に変換する `encode_base62()` などの部品があります。
 

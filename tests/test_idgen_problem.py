@@ -8,27 +8,30 @@
   - ステージ1（基本要件）:  `pytest -m exercise`
   - ステージ2（worker-id）:  `pytest -m exercise2`
 
+ステージ1の足場（`ProblemIssuer`）は `now_ms` と `rng` だけを受け取る。
+worker_id は **ステージ2で解く人がコンストラクタに追加する**（漸進的インターフェース）。
+そのため worker_id を使う TC5/TC6/V1 は、ステージ1のスタブでは TypeError で赤になり、
+worker_id を追加すると緑になる。
+
 ================================================================================
 テスト設計
 ================================================================================
 
 ■ 1. ID要件の整理（検証可能な定義）
-  ── ステージ1（基本要件 / ch04）
+  ── ステージ1（基本要件 / 足場は now_ms, rng）
   R1 文字種     : 出力は [0-9A-Za-z] のみ
   R2 長さ       : 厳密に10文字
   R3 ソート可   : 発行順に文字列ソートできる（後発IDほど大きい）。実現手段は自由
-                  （時刻を使ってもよいし、別の単調増加でもよい）
-  R4 連番回避   : 同一発行点での開始位置がランダム化され、開始が固定でない
+  R4 連番でない : 同一発行点での開始位置がランダム化され、開始が固定でない
   R5 単一一意性 : 1発行器は容量内（同一ミリ秒 4096件）で重複なし
-  ── ステージ2（並列 / ch08）
+  ── ステージ2（並列 / 解く人が worker_id を追加）
   R6 並列一意性 : worker_id が異なる発行器は同一ミリ秒でも衝突しない
   R7 worker割当 : worker_id が worker ビット領域(6bit, シフト12)に正しく入る
-  ── 足場の契約（既定ゲート）
-  V1 worker範囲 : worker_id は 0..63 のみ、範囲外は ValueError（__init__ で提供）
+  V1 worker範囲 : worker_id は 0..63 のみ、範囲外は ValueError
 
-  ※ 表現不能な時刻の拒否（ms<0 / ms>MAX_MS）は「時刻を使う実装」だけに関わる
-    堅牢性であり、要件（発行順ソート可）には含めない＝演習対象外。解答例
-    `UserIdGenerator` 側で担保し test_idgen_generator.py で検証する。
+  ※ 表現不能な時刻の拒否は「時刻を使う実装」だけに関わる堅牢性であり、要件
+    （発行順ソート可）には含めない＝演習対象外。解答例 `UserIdGenerator` 側で
+    担保し test_idgen_generator.py で検証する。
 
 ■ 2. デシジョンテーブル（2つのIDが衝突するか）
   同一ms | 同一worker | 同一seq | 衝突
@@ -52,7 +55,7 @@
   [exercise]  TC4 R4    : rng シード違いで先頭IDが十分ばらつく     （ランダム化）
   [exercise2] TC5 R6    : worker 0 と 1 が同一msで 8192件 全 distinct（鳩の巣）
   [exercise2] TC6 R7    : worker_id∈{0,37,63} が worker ビットに一致（BVA+混合ビット）
-  [default]   V1  V1    : worker_id=-1,64 で ValueError（BVA: 無効境界・足場）
+  [exercise2] V1  V1    : worker_id=-1,64 で ValueError（BVA: 無効境界）
 
 ■ 5. 偽陽性・偽陰性を出さない根拠
   偽陰性なし（正解実装で全 green）:
@@ -67,8 +70,8 @@
     スピンに入った場合（過剰な now_ms 呼び出し）に ms を前進させ、固定クロック×丁度
     4096 で off-by-one な実装が無限ループ（CIハング）するのを防ぐ。正常実装は閾値
     未満なので ms は固定のまま＝容量・衝突の検証は成立する。
-  - すべての TC は `issue()` を呼ぶため未実装スタブでは赤。V1 は `__init__`（足場）
-    のみを見るため未実装でも緑（既定ゲートに置く）。
+  - すべての TC は `issue()`（または worker_id 付き `__init__`）を呼ぶため、未実装の
+    ステージ1スタブでは exercise=赤、exercise2=赤（worker_id 未追加で TypeError）。
 """
 
 import random
@@ -111,13 +114,13 @@ def _spin_safe_clock(ms_since_epoch: int, *, spin_limit: int = 1_000_000) -> Clo
     return clock
 
 
-# ── ステージ1（基本要件 R1–R5 / ch04）: `pytest -m exercise` ────────────────
+# ── ステージ1（基本要件 R1–R5）: `pytest -m exercise` ───────────────────────
 
 
 @pytest.mark.exercise
 def test_tc1_charset_and_length() -> None:
     """TC1 (R1+R2): 発行した全IDが base62・10文字。"""
-    issuer = ProblemIssuer(0, now_ms=_fixed_clock(1000), rng=random.Random(0))
+    issuer = ProblemIssuer(now_ms=_fixed_clock(1000), rng=random.Random(0))
     ids = [issuer.issue() for _ in range(100)]
     assert all(ID_RE.fullmatch(i) for i in ids)
 
@@ -125,7 +128,7 @@ def test_tc1_charset_and_length() -> None:
 @pytest.mark.exercise
 def test_tc2_unique_within_one_ms_at_capacity() -> None:
     """TC2 (R5, BVA 容量上限): 同一ミリ秒・単一発行器で 4096件 全 distinct。"""
-    issuer = ProblemIssuer(0, now_ms=_spin_safe_clock(7), rng=random.Random(0))
+    issuer = ProblemIssuer(now_ms=_spin_safe_clock(7), rng=random.Random(0))
     ids = [issuer.issue() for _ in range(MAX_SEQUENCE + 1)]
     assert len(set(ids)) == MAX_SEQUENCE + 1
 
@@ -138,7 +141,7 @@ def test_tc3_sortable_by_issue_order() -> None:
     def now_ms() -> int:
         return EPOCH_MS + clock["ms"]
 
-    issuer = ProblemIssuer(0, now_ms=now_ms, rng=random.Random(0))
+    issuer = ProblemIssuer(now_ms=now_ms, rng=random.Random(0))
     ids: list[str] = []
     for ms in range(1, 51):
         clock["ms"] = ms
@@ -150,14 +153,15 @@ def test_tc3_sortable_by_issue_order() -> None:
 def test_tc4_randomized_start_not_sequential() -> None:
     """TC4 (R4): rng シード違いで先頭IDが十分ばらつく（開始のランダム化）。"""
     first_ids = {
-        ProblemIssuer(0, now_ms=_fixed_clock(123), rng=random.Random(seed)).issue()
+        ProblemIssuer(now_ms=_fixed_clock(123), rng=random.Random(seed)).issue()
         for seed in range(16)
     }
     # 固定開始(連番)実装は全て同一(=1種)。ランダム化されていれば大きくばらつく。
     assert len(first_ids) >= 8
 
 
-# ── ステージ2（並列の一意性 R6/R7 / ch08）: `pytest -m exercise2` ────────────
+# ── ステージ2（並列の一意性 R6/R7/V1）: `pytest -m exercise2` ────────────────
+# 解く人が ProblemIssuer に worker_id（第1引数）を追加すると緑になる。
 
 
 @pytest.mark.exercise2
@@ -183,11 +187,9 @@ def test_tc6_worker_id_in_worker_bits(worker_id: int) -> None:
     assert (value >> 12) & MAX_WORKER_ID == worker_id
 
 
-# ── 足場の契約 V1（__init__ のみ＝未実装でも緑・既定ゲート）──────────────────
-
-
+@pytest.mark.exercise2
 @pytest.mark.parametrize("bad_worker_id", [-1, MAX_WORKER_ID + 1])
 def test_v1_rejects_out_of_range_worker_id(bad_worker_id: int) -> None:
-    """V1 (BVA 無効境界・足場): worker_id 範囲外は ValueError（既定ゲート＝常緑）。"""
+    """V1 (BVA 無効境界): worker_id 範囲外は ValueError。"""
     with pytest.raises(ValueError):
         ProblemIssuer(bad_worker_id)
