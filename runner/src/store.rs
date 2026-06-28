@@ -19,6 +19,7 @@ pub struct Job {
     pub error: Option<String>,
 }
 
+#[derive(Clone)]
 pub struct JobStore {
     pool: PgPool,
 }
