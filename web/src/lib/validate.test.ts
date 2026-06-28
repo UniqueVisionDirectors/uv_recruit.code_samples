@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isBase62, isLen10, summarize } from "./validate";
+import { isBase62, isLen10, isSortedAfter, summarize } from "./validate";
 
 describe("validate", () => {
   it("accepts base62 length-10", () => {
@@ -15,5 +15,14 @@ describe("validate", () => {
     expect(s.total).toBe(3);
     expect(s.invalid).toBe(1);
     expect(s.sortedOk).toBe(true);
+  });
+  it("summarize detects sort-order violation", () => {
+    const s = summarize(["0000000002", "0000000001"]);
+    expect(s.invalid).toBe(0);
+    expect(s.sortedOk).toBe(false);
+  });
+  it("isSortedAfter is strict and isBase62 rejects empty", () => {
+    expect(isSortedAfter("x", "x")).toBe(false);
+    expect(isBase62("")).toBe(false);
   });
 });
