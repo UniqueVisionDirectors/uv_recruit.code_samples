@@ -77,7 +77,7 @@
 **Interfaces:**
 - Produces: `User`（属性 `id: str`, `name: str`, `created_at: datetime`）／`UserCreate(name: str)`／`UserRead(id,name,created_at)`／`create_user(session, *, user_id: str, name: str) -> User`, `get_user(session, user_id: str) -> User | None`, `list_users(session, limit=100, offset=0) -> list[User]`。
 
-- [ ] **Step 1: User モデル・スキーマを作成**
+- [x] **Step 1: User モデル・スキーマを作成**
 
 `app/models/user.py`:
 ```python
@@ -115,7 +115,7 @@ class UserRead(BaseModel):
     created_at: datetime
 ```
 
-- [ ] **Step 2: crud のテストを書く（失敗させる）**
+- [x] **Step 2: crud のテストを書く（失敗させる）**
 
 `tests/test_crud_user.py`:
 ```python
@@ -141,19 +141,19 @@ async def test_list_users_sorted_by_id(session):
     assert [u.id for u in users] == ["0000000001", "0000000002"]
 ```
 
-- [ ] **Step 3: conftest の metadata 登録 import を user に変更**
+- [x] **Step 3: conftest の metadata 登録 import を user に変更**
 
 `tests/conftest.py` の `from app.models import item  # noqa: F401  metadata 登録` を次へ置換:
 ```python
 from app.models import user  # noqa: F401  metadata 登録
 ```
 
-- [ ] **Step 4: テストが失敗することを確認**
+- [x] **Step 4: テストが失敗することを確認**
 
 Run: `docker compose run --rm app uv run pytest tests/test_crud_user.py -v`
 Expected: FAIL（`app.crud.user` が無い / ImportError）
 
-- [ ] **Step 5: crud を実装**
+- [x] **Step 5: crud を実装**
 
 `app/crud/user.py`:
 ```python
@@ -184,19 +184,19 @@ async def list_users(
     return list(result.scalars().all())
 ```
 
-- [ ] **Step 6: 旧 Item 関連ファイルを削除**
+- [x] **Step 6: 旧 Item 関連ファイルを削除**
 
 ```bash
 git rm app/models/item.py app/schemas/item.py app/crud/item.py \
        tests/test_crud_item.py tests/test_api_items.py
 ```
 
-- [ ] **Step 7: テストが通ることを確認**
+- [x] **Step 7: テストが通ることを確認**
 
 Run: `docker compose run --rm app uv run pytest tests/test_crud_user.py -v`
 Expected: PASS（3件）
 
-- [ ] **Step 8: コミット**
+- [x] **Step 8: コミット**
 
 ```bash
 git add app/models/user.py app/schemas/user.py app/crud/user.py \
@@ -215,7 +215,7 @@ git commit -m "feat: replace Item with User persistence layer"
 
 **Interfaces:** Produces: head リビジョン `0001_create_users`（`users` テーブル）。
 
-- [ ] **Step 1: env.py の metadata 登録 import を user に変更**
+- [x] **Step 1: env.py の metadata 登録 import を user に変更**（Task 1 で前倒し実施済み：entrypoint が毎回 alembic を読むため）
 
 `migrations/env.py` の `from app.models import item  # noqa: F401  models を import して metadata に登録` を次へ置換:
 ```python
@@ -783,7 +783,7 @@ git commit -m "feat: app factory and issuer selection via ID_STRATEGY"
 - Consumes: `crud.user`, `get_session`, `IdIssuer`（`request.app.state.issuer`）, `UserCreate`/`UserRead`。
 - Produces: `POST /users`(201, body `UserRead`／衝突時 409)、`GET /users/{user_id}`(200／404)。依存 `get_issuer(request) -> IdIssuer`。
 
-- [ ] **Step 1: 旧 item ルーターを削除**
+- [x] **Step 1: 旧 item ルーターを削除**（Task 1 で前倒し実施済み：conftest が app.main を import し routes_item が壊れるため）
 
 ```bash
 git rm app/api/routes_item.py
