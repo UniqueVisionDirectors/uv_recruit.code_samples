@@ -50,9 +50,3 @@ export async function listRuns(): Promise<RunJob[]> {
   if (!res.ok) throw new Error(`listRuns failed: ${res.status}`)
   return res.json() as Promise<RunJob[]>
 }
-
-export async function getRun(jobId: string): Promise<RunJob> {
-  const res = await fetch(`/api/runner/runs/${jobId}`)
-  if (!res.ok) throw new Error(`getRun failed: ${res.status}`)
-  return res.json() as Promise<RunJob>
-}

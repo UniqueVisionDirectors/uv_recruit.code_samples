@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import IssuePanel from './components/IssuePanel.vue'
 import UserTable from './components/UserTable.vue'
 import JobLauncher from './components/JobLauncher.vue'
@@ -20,11 +20,6 @@ async function refresh(): Promise<void> {
   }
 }
 
-onMounted(() => {
-  void refresh()
-  void refreshJobs()
-})
-
 function onIssued(): void {
   void refresh()
 }
@@ -32,6 +27,23 @@ function onIssued(): void {
 const jobs = ref<RunJob[]>([])
 const jobsError = ref('')
 const selectedJobId = ref<string | null>(null)
+
+// 一覧・詳細は GET /runs を唯一の出典とする（UserTable と同じく App がデータを所有し、
+// JobList / JobDetail は純表示）。選択中ジョブの詳細は取得済みの一覧から導出するため、
+// 個別取得は不要。
+const selectedJob = computed<RunJob | null>(() =>
+  selectedJobId.value === null
+    ? null
+    : (jobs.value.find((j) => j.job_id === selectedJobId.value) ?? null),
+)
+
+// runner はジョブを非同期実行し、完了/失敗時にだけ jobs を更新する。running が残る間だけ
+// 一覧をポーリングし、全ジョブが終了したら止める（無駄な定常ポーリングを避ける）。
+let jobsTimerId: ReturnType<typeof setInterval> | null = null
+
+function anyRunning(): boolean {
+  return jobs.value.some((j) => j.status === 'running')
+}
 
 async function refreshJobs(): Promise<void> {
   jobsError.value = ''
@@ -42,13 +54,45 @@ async function refreshJobs(): Promise<void> {
   }
 }
 
+function stopJobsPolling(): void {
+  if (jobsTimerId !== null) {
+    clearInterval(jobsTimerId)
+    jobsTimerId = null
+  }
+}
+
+function ensureJobsPolling(): void {
+  if (jobsTimerId !== null || !anyRunning()) return
+  jobsTimerId = setInterval(() => {
+    void (async () => {
+      await refreshJobs()
+      if (!anyRunning()) stopJobsPolling()
+    })()
+  }, 1500)
+}
+
 function onLaunched(): void {
-  void refreshJobs()
+  void (async () => {
+    await refreshJobs()
+    ensureJobsPolling()
+  })()
 }
 
 function onSelectJob(jobId: string): void {
   selectedJobId.value = jobId
 }
+
+onMounted(() => {
+  void refresh()
+  void (async () => {
+    await refreshJobs()
+    ensureJobsPolling()
+  })()
+})
+
+onUnmounted(() => {
+  stopJobsPolling()
+})
 </script>
 
 <template>
@@ -62,6 +106,6 @@ function onSelectJob(jobId: string): void {
     <JobLauncher @launched="onLaunched" />
     <p v-if="jobsError" class="error-msg">{{ jobsError }}</p>
     <JobList :jobs="jobs" @select="onSelectJob" />
-    <JobDetail :job-id="selectedJobId" />
+    <JobDetail :job="selectedJob" />
   </div>
 </template>
