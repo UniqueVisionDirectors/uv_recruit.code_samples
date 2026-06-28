@@ -1,8 +1,8 @@
-# 教材UX強化フェーズ 実装計画（フロント / runner / OpenAPI / チュートリアル）
+# サンプルUX強化フェーズ 実装計画（フロント / runner / OpenAPI / チュートリアル）
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 完成済みのユーザーID発行API（バックエンド）に、学習体験（UX）を付け足す ── ① Swagger UI を主役にした「触れる」API、② Vue 可視化フロント、③ Rust/Axum 負荷ランナー（ジョブ実行で 409 を測る）、④ VitePress チュートリアル ── を実装し、教材パッケージを完成させる。
+**Goal:** 完成済みのユーザーID発行API（バックエンド）に、学習体験（UX）を付け足す ── ① Swagger UI を主役にした「触れる」API、② Vue 可視化フロント、③ Rust/Axum 負荷ランナー（ジョブ実行で 409 を測る）、④ VitePress チュートリアル ── を実装し、サンプルパッケージを完成させる。
 
 **Architecture:** 関心を言語・ディレクトリ・コンテナで分離する。`app`(Python/FastAPI) は ID発行ドメインに純化（一覧と OpenAPI 強化のみ追加）。`runner`(Rust/Axum) は DB に `jobs` を持つ非同期負荷ランナーで、tokio マルチスレッド＋mpsc キューで負荷タスクと記録タスクを分け、**409 はジョブ単位の集約のみ DB に書く**（逐次書き込みしない＝ボトルネック回避）。`web`(Vue/Vite) はブラウザUIで、単発発行（並列1）と runner ジョブ（並列100/1000）を起動し可視化。`docs`(VitePress) が自習＋ライブ投影兼用の唯一の正典。
 
@@ -24,7 +24,7 @@
 - runner クレートは **lib+bin 構成**（`runner/src/lib.rs` が `pub mod api/engine/store`、`main.rs` と `tests/api.rs` が `runner::` で参照）。`AppState { store, client }`。sqlx は**ランタイムクエリ**（`query`/`query_as`、`!` マクロ不使用）でビルド時 DB 不要。
 - web の ESLint は **flat config**（`eslint.config.js`、`@vue/eslint-config-typescript` v14 の `withVueTs`）。`.eslintrc.cjs` は非対応。`test` は `vitest run --passWithNoTests`。proxy は `/api/app`→app:8000、`/api/runner`→runner:9000。
 - web の api.ts: `createUser`/`listUsers`（`UserRead {id,name,created_at}`）。非2xx は throw。Task 10 で `startRun`/`listRuns`/`getRun` と `RunJob` 型を追加。
-- **デフォルト `app` は `ID_STRATEGY=problem`** で `issue()` が `NotImplementedError` を投げる（教材の穴埋め）。動作確認は `solution`(stage2) か demo スタックを使う。
+- **デフォルト `app` は `ID_STRATEGY=problem`** で `issue()` が `NotImplementedError` を投げる（サンプルの穴埋め）。動作確認は `solution`(stage2) か demo スタックを使う。
 - ホストの **5173 ポートが別コンテナ（promana_frontend）と衝突する可能性**あり（Task 11 e2e で注意）。
 - Rust crate は固定済み（`runner/Cargo.lock`）: axum 0.8.9 / sqlx 0.8.6 / tokio 1.52 / reqwest 0.12.28。web: vite 8.1 / vue 3.5.38 / vitest 4.1.9 / eslint 10.6。
 - 各タスクのレビューは task-scoped で完了。Minor 指摘は `.superpowers/sdd/progress.md`（ローカル scratch）に蓄積。**全タスク完了後に whole-branch review を実施すること。**
@@ -154,7 +154,7 @@ git commit -m "feat(app): add GET /users list endpoint"
 
 ---
 
-### Task 2: OpenAPI を教材品質に強化（409宣言・例・メタ情報）
+### Task 2: OpenAPI をサンプル品質に強化（409宣言・例・メタ情報）
 
 **Files:**
 - Modify: `app/api/routes_user.py`, `app/schemas/user.py`, `app/main.py`, `tests/test_api_users.py`
@@ -230,9 +230,9 @@ class UserRead(BaseModel):
 `app/main.py` の `FastAPI(...)` 呼び出しを置換:
 ```python
     application = FastAPI(
-        title="ユーザーID発行API（教材）",
+        title="ユーザーID発行API（サンプル）",
         description=(
-            "発行順ソート可能な base62 10文字 ID を払い出す教材用 API。"
+            "発行順ソート可能な base62 10文字 ID を払い出すサンプル API。"
             "/docs の Try it out から実際に発行できる。"
         ),
         version="0.2.0",
@@ -850,7 +850,7 @@ git commit -m "docs: write 7-chapter tutorial (curl/swagger/mermaid)"
 
 **Interfaces:** Produces: README は概要＋各URL＋チュートリアルへの誘導に整理。全ゲート緑。
 
-- [x] **Step 1: README を整理**（教材の入口・各サービスURL・「詳細は docs/tutorial」へ誘導。冗長な手順はチュートリアルへ移し重複を排除）。
+- [x] **Step 1: README を整理**（サンプルの入口・各サービスURL・「詳細は docs/tutorial」へ誘導。冗長な手順はチュートリアルへ移し重複を排除）。
 
 - [x] **Step 2: 全言語ゲートを最終確認**（app/runner/web すべて緑: pytest25/cargo9/vitest5）
 

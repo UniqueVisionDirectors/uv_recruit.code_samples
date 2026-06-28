@@ -1,6 +1,6 @@
-# uv_recruit code samples — ユーザーID発行API 教材
+# uv_recruit code samples — ユーザーID発行API サンプル
 
-ユーザーID発行API（FastAPI + PostgreSQL）の実装・衝突可視化・負荷ランナー・7章チュートリアルをまとめた教材リポジトリ。
+ユーザーID発行API（FastAPI + PostgreSQL）の実装・衝突可視化・負荷ランナー・7章チュートリアルをまとめたサンプルリポジトリ。
 
 ## 必要なもの
 
@@ -13,20 +13,20 @@ cp .env.example .env   # 任意
 docker compose up --build
 ```
 
-| サービス | URL | 説明 |
-|---|---|---|
-| API (app) | http://localhost:8000 | ユーザーID発行API |
-| Swagger | http://localhost:8000/docs | OpenAPI ドキュメント |
-| web (可視化) | http://localhost:5173 | 単一発行UI + 負荷ジョブ操作 |
-| runner (負荷ランナー) | http://localhost:9000/healthz | Rust 非同期負荷ランナー |
-| docs (チュートリアル) | http://localhost:5174 | 7章チュートリアルサイト |
-| solution (解答例) | http://localhost:8001/docs | stage2 実装を直接確認 |
+| サービス              | URL                           | 説明                        |
+| --------------------- | ----------------------------- | --------------------------- |
+| API (app)             | http://localhost:8000         | ユーザーID発行API           |
+| Swagger               | http://localhost:8000/docs    | OpenAPI ドキュメント        |
+| web (可視化)          | http://localhost:5173         | 単一発行UI + 負荷ジョブ操作 |
+| runner (負荷ランナー) | http://localhost:9000/healthz | Rust 非同期負荷ランナー     |
+| docs (チュートリアル) | http://localhost:5174         | 7章チュートリアルサイト     |
+| solution (解答例)     | http://localhost:8001/docs    | stage2 実装を直接確認       |
 
 ## チュートリアル
 
 **学習パスの全詳細は http://localhost:5174 の7章チュートリアルを参照。**
 
-1. イントロ — 教材の概要と目的
+1. イントロ — サンプルの概要と目的
 2. セットアップ — Docker 起動・動作確認
 3. API仕様 — エンドポイント解説
 4. Stage 1 — ID発行ロジックの実装
@@ -38,12 +38,12 @@ docker compose up --build
 
 ## エンドポイント（app）
 
-| メソッド | パス | 説明 |
-|---|---|---|
-| GET | `/health` | 稼働 + DB 接続確認 |
-| POST | `/users` | ユーザー作成（201 / 衝突時 409） |
-| GET | `/users/{id}` | ユーザー取得（200 / 404） |
-| GET | `/users` | ユーザー一覧 |
+| メソッド | パス          | 説明                             |
+| -------- | ------------- | -------------------------------- |
+| GET      | `/health`     | 稼働 + DB 接続確認               |
+| POST     | `/users`      | ユーザー作成（201 / 衝突時 409） |
+| GET      | `/users/{id}` | ユーザー取得（200 / 404）        |
+| GET      | `/users`      | ユーザー一覧                     |
 
 ## 開発コマンド（すべてコンテナ内）
 
