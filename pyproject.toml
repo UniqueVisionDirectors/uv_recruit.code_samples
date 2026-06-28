@@ -45,9 +45,10 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 # 穴埋め演習の受け入れテストは既定ゲートから除外する（出荷時は未解答＝赤のため）。
 # 学習者は `pytest -m exercise` で明示的に実行して red→green を体験する。
-addopts = "-m 'not exercise'"
+addopts = "-m 'not exercise and not exercise2'"
 markers = [
-    "exercise: 学習者が実装する穴埋め演習の受け入れテスト（既定ゲートから除外。`pytest -m exercise` で実行）",
+    "exercise: ステージ1（基本要件）の穴埋め演習テスト。`pytest -m exercise` で実行（既定ゲートから除外）",
+    "exercise2: ステージ2（worker-id）の穴埋め演習テスト。`pytest -m exercise2` で実行（既定ゲートから除外）",
 ]
 
 [build-system]
