@@ -1,11 +1,10 @@
 from fastapi import FastAPI
 
-from app.api import routes_health, routes_item
+from app.api import routes_health
 
 app = FastAPI(title="uv_recruit sample API")
 
 app.include_router(routes_health.router)
-app.include_router(routes_item.router)
 
 
 @app.get("/")

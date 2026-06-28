@@ -6,7 +6,7 @@ from sqlmodel import SQLModel
 from app.core.config import get_settings
 from app.db.session import get_session
 from app.main import app
-from app.models import item  # noqa: F401  metadata 登録
+from app.models import user  # noqa: F401  metadata 登録
 
 
 @pytest_asyncio.fixture

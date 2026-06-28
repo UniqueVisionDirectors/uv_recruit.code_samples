@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 from sqlmodel import SQLModel
 
 from app.core.config import get_settings
-from app.models import item  # noqa: F401  models を import して metadata に登録
+from app.models import user  # noqa: F401  models を import して metadata に登録
 
 config = context.config
 config.set_main_option("sqlalchemy.url", get_settings().database_url)
