@@ -1,17 +1,17 @@
 use axum::{
+    Json, Router,
     extract::{Path, State},
     http::StatusCode,
     routing::{get, post},
-    Json, Router,
 };
 use chrono::Utc;
 use reqwest::Client;
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::time::Instant;
 use uuid::Uuid;
 
-use crate::engine::{run_load, RunSpec};
+use crate::engine::{RunSpec, run_load};
 use crate::store::{Job, JobStore};
 
 #[derive(Clone)]

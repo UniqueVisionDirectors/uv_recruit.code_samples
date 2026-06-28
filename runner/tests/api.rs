@@ -1,4 +1,4 @@
-use runner::api::{app, AppState};
+use runner::api::{AppState, app};
 use runner::store::JobStore;
 use sqlx::PgPool;
 
