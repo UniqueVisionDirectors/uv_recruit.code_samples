@@ -222,13 +222,13 @@ git commit -m "feat: replace Item with User persistence layer"
 from app.models import user  # noqa: F401  models を import して metadata に登録
 ```
 
-- [ ] **Step 2: 旧マイグレーションを削除**
+- [x] **Step 2: 旧マイグレーションを削除**
 
 ```bash
 git rm migrations/versions/15b778dd63a3_create_items_table.py
 ```
 
-- [ ] **Step 3: 新しい初期マイグレーションを作成**
+- [x] **Step 3: 新しい初期マイグレーションを作成**
 
 `migrations/versions/0001_create_users.py`:
 ```python
@@ -265,7 +265,7 @@ def downgrade() -> None:
     op.drop_table("users")
 ```
 
-- [ ] **Step 4: DB をリセットしてマイグレーション適用を確認**
+- [x] **Step 4: DB をリセットしてマイグレーション適用を確認**
 
 Run:
 ```bash
@@ -274,7 +274,7 @@ docker compose run --rm app uv run alembic upgrade head
 ```
 Expected: `Running upgrade -> 0001_create_users, create users table` のログ。エラーなし。
 
-- [ ] **Step 5: コミット**
+- [x] **Step 5: コミット**
 
 ```bash
 git add migrations/env.py migrations/versions/0001_create_users.py
@@ -291,13 +291,13 @@ git commit -m "feat: replace initial migration with users table"
 **Interfaces:**
 - Produces: 定数（`ALPHABET`,`ID_LENGTH`,`SEQUENCE_BITS`,`MAX_SEQUENCE`,`SEQUENCE_MASK`,`WORKER_BITS`,`MAX_WORKER_ID`,`WORKER_SHIFT`,`MS_SHIFT`,`EPOCH_MS`,`MAX_MS`）／`encode_base62(value: int, length: int = ID_LENGTH) -> str`／`decode_base62(text: str) -> int`／`Clock = Callable[[], int]`／`class IdIssuer(Protocol): def issue(self) -> str: ...`。
 
-- [ ] **Step 1: 空 `app/idgen/__init__.py` を作成**
+- [x] **Step 1: 空 `app/idgen/__init__.py` を作成**
 
 ```bash
 mkdir -p app/idgen && : > app/idgen/__init__.py
 ```
 
-- [ ] **Step 2: コーデックのテストを書く**
+- [x] **Step 2: コーデックのテストを書く**
 
 `tests/test_idgen_base.py`:
 ```python
@@ -337,12 +337,12 @@ def test_encode_rejects_negative_value():
         encode_base62(-1)
 ```
 
-- [ ] **Step 3: テストが失敗することを確認**
+- [x] **Step 3: テストが失敗することを確認**
 
 Run: `docker compose run --rm app uv run pytest tests/test_idgen_base.py -v`
 Expected: FAIL（`app.idgen.base` が無い）
 
-- [ ] **Step 4: `app/idgen/base.py` を実装**
+- [x] **Step 4: `app/idgen/base.py` を実装**
 
 ```python
 from collections.abc import Callable
@@ -395,12 +395,12 @@ class IdIssuer(Protocol):
     def issue(self) -> str: ...
 ```
 
-- [ ] **Step 5: テストが通ることを確認**
+- [x] **Step 5: テストが通ることを確認**
 
 Run: `docker compose run --rm app uv run pytest tests/test_idgen_base.py -v`
 Expected: PASS（5件）
 
-- [ ] **Step 6: コミット**
+- [x] **Step 6: コミット**
 
 ```bash
 git add app/idgen/__init__.py app/idgen/base.py tests/test_idgen_base.py
@@ -418,7 +418,7 @@ git commit -m "feat: add base62 codec and id field layout constants"
 - Consumes: `app.idgen.base` の定数・`encode_base62`・`decode_base62`・`Clock`。
 - Produces: `class UserIdGenerator:` `__init__(self, worker_id: int, *, now_ms: Clock | None = None, rng: random.Random | None = None)`、メソッド `issue(self) -> str`。worker_id 範囲外で `ValueError`。`issue` は `IdIssuer` を満たす。
 
-- [ ] **Step 1: ジェネレータのテストを書く**
+- [x] **Step 1: ジェネレータのテストを書く**
 
 `tests/test_idgen_generator.py`:
 ```python
@@ -474,12 +474,12 @@ def test_rejects_timestamp_before_epoch():
         gen.issue()
 ```
 
-- [ ] **Step 2: テストが失敗することを確認**
+- [x] **Step 2: テストが失敗することを確認**
 
 Run: `docker compose run --rm app uv run pytest tests/test_idgen_generator.py -v`
 Expected: FAIL（`app.idgen.generator` が無い）
 
-- [ ] **Step 3: `app/idgen/generator.py` を実装**
+- [x] **Step 3: `app/idgen/generator.py` を実装**
 
 ```python
 import random
@@ -546,12 +546,12 @@ class UserIdGenerator:
         return encode_base62(value)
 ```
 
-- [ ] **Step 4: テストが通ることを確認**
+- [x] **Step 4: テストが通ることを確認**
 
 Run: `docker compose run --rm app uv run pytest tests/test_idgen_generator.py -v`
 Expected: PASS（6件）
 
-- [ ] **Step 5: コミット**
+- [x] **Step 5: コミット**
 
 ```bash
 git add app/idgen/generator.py tests/test_idgen_generator.py
@@ -569,7 +569,7 @@ git commit -m "feat: add UserIdGenerator (sortable, worker-partitioned ids)"
 
 > 鳩の巣原理で**決定的に**検証する。固定クロックの同一ミリ秒では `worker_id` を固定すると採れる値は `MAX_SEQUENCE+1=4096` 通りしか無い。各ジェネレータからちょうど 4096 件引けばスピンせず全 4096 値を一巡する。
 
-- [ ] **Step 1: 衝突/不衝突のテストを書く**
+- [x] **Step 1: 衝突/不衝突のテストを書く**
 
 `tests/test_idgen_collision.py`:
 ```python
@@ -604,12 +604,12 @@ def test_stage2_distinct_worker_ids_never_collide():
     assert len(set(ids)) == 2 * _PER_GEN
 ```
 
-- [ ] **Step 2: テストが通ることを確認（既存実装で成立する）**
+- [x] **Step 2: テストが通ることを確認（既存実装で成立する）**
 
 Run: `docker compose run --rm app uv run pytest tests/test_idgen_collision.py -v`
 Expected: PASS（2件）。stage1 は重複あり、stage2 は重複なし。
 
-- [ ] **Step 3: コミット**
+- [x] **Step 3: コミット**
 
 ```bash
 git add tests/test_idgen_collision.py
@@ -625,7 +625,7 @@ git commit -m "test: demonstrate stage1 collision and stage2 uniqueness"
 
 **Interfaces:** Produces: `class ProblemIssuer:` `def issue(self) -> str`（学習者が実装する穴埋め。初期状態は `NotImplementedError`）。`IdIssuer` を満たす型である。
 
-- [ ] **Step 1: スタブの足場テストを書く**
+- [x] **Step 1: スタブの足場テストを書く**
 
 `tests/test_idgen_problem.py`:
 ```python
@@ -640,12 +640,12 @@ def test_problem_issuer_is_not_implemented_yet():
         ProblemIssuer().issue()
 ```
 
-- [ ] **Step 2: テストが失敗することを確認**
+- [x] **Step 2: テストが失敗することを確認**
 
 Run: `docker compose run --rm app uv run pytest tests/test_idgen_problem.py -v`
 Expected: FAIL（`app.idgen.problem` が無い）
 
-- [ ] **Step 3: `app/idgen/problem.py` を実装**
+- [x] **Step 3: `app/idgen/problem.py` を実装**
 
 ```python
 class ProblemIssuer:
@@ -663,12 +663,12 @@ class ProblemIssuer:
         raise NotImplementedError("ここにID発行ロジックを実装してください")
 ```
 
-- [ ] **Step 4: テストが通ることを確認**
+- [x] **Step 4: テストが通ることを確認**
 
 Run: `docker compose run --rm app uv run pytest tests/test_idgen_problem.py -v`
 Expected: PASS（1件）
 
-- [ ] **Step 5: コミット**
+- [x] **Step 5: コミット**
 
 ```bash
 git add app/idgen/problem.py tests/test_idgen_problem.py
