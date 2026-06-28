@@ -850,9 +850,9 @@ git commit -m "docs: write 7-chapter tutorial (curl/swagger/mermaid)"
 
 **Interfaces:** Produces: README は概要＋各URL＋チュートリアルへの誘導に整理。全ゲート緑。
 
-- [ ] **Step 1: README を整理**（教材の入口・各サービスURL・「詳細は docs/tutorial」へ誘導。冗長な手順はチュートリアルへ移し重複を排除）。
+- [x] **Step 1: README を整理**（教材の入口・各サービスURL・「詳細は docs/tutorial」へ誘導。冗長な手順はチュートリアルへ移し重複を排除）。
 
-- [ ] **Step 2: 全言語ゲートを最終確認**
+- [x] **Step 2: 全言語ゲートを最終確認**（app/runner/web すべて緑: pytest25/cargo9/vitest5）
 
 Run:
 ```bash
@@ -862,7 +862,7 @@ docker compose run --rm web npm run typecheck && docker compose run --rm web npm
 ```
 Expected: すべて PASS。
 
-- [ ] **Step 3: コミット**
+- [x] **Step 3: コミット**
 
 ```bash
 git add README.md
