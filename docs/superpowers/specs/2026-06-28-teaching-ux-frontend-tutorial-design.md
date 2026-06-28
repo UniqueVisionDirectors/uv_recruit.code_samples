@@ -1,4 +1,4 @@
-# 教材UX強化フェーズ — 設計（フロントエンド / チュートリアル / OpenAPI）
+# 教材UX強化フェーズ — 設計（フロントエンド / チュートリアル / OpenAPI / 負荷ランナー）
 
 > 作成日: 2026-06-28
 > 位置づけ: バックエンド実装完了後の **第2フェーズ＝教材としての精度・UX を高める**ための設計。
@@ -8,145 +8,159 @@
 
 ## 1. 目的とスコープ
 
-完成済みのバックエンド（ユーザーID発行API・2ステージ・並列衝突デモ）に対し、**学習体験（UX）**を付け足す。具体的には次の4本柱:
+完成済みのバックエンド（ユーザーID発行API・2ステージ・並列衝突デモ）に対し、**学習体験（UX）**を付け足す。柱:
 
 1. **解説ドキュメント**（VitePress チュートリアル）— 2段階を、さらに細かいステップに分けた導入。自習でも読め、ライブ説明でも投影できる唯一の正典。
 2. **API の叩き方をわかりやすく** — Swagger UI（OpenAPI ビューア）の「Try it out」を主役に、curl を補助として併記（コピペ実行可）。
-3. **可視化フロントエンド** — ID発行の様子・発行件数・かぶり（衝突）件数・要件未達IDを、ブラウザでビジュアルに表示。
-4. **Webの基本構成の解説** — ブラウザ→フロント→API→（LB）→DB の構成を図で。**ステージ1ではLBが現れず、ステージ2でLBが登場**する対比。→ 独立したスライドは作らず、VitePress 内の Mermaid 図つきページで表現する。
+3. **可視化フロントエンド** — ID発行の様子・発行件数・かぶり（衝突=409）件数・要件未達IDを、ブラウザでビジュアルに表示。
+4. **負荷ランナー＋衝突台帳** — 「N件生成するまで連続発行し、何回 409 が起きたか」を**並列度を変えて測れる**機能。並列度=1 が最初の段階（衝突ゼロ）、100/1000 が広範の段階（衝突発生）という教材アークを実機で再現。
+5. **Webの基本構成の解説** — ブラウザ→フロント→API→（LB）→DB の構成を図で。**ステージ1ではLBが現れず、ステージ2でLBが登場**する対比。独立スライドは作らず、VitePress 内の Mermaid 図つきページで表現。
 
 ### 非目標（YAGNI）
 - 認証・本番ビルド最適化・多言語化・独立スライドデッキ（Marp/Slidev）はやらない。
-- worker-id 機構は現行の **明示 `WORKER_ID` ＋ 3サービス**を維持。設計書 §5.3 の `--scale`/hostname 序数案には寄せない（単純で確実、教材図とも一致）。
-- DBによる一意性保証は引き続き採らない（既存方針）。
+- worker-id 機構は現行の **明示 `WORKER_ID` ＋ 3サービス**を維持。設計書 §5.3 の `--scale`/hostname 序数案には寄せない。
+- DBによる一意性保証は引き続き採らない（既存方針）。`collisions` テーブルは**観測専用**で、一意性保証には関与しない。
 
 ---
 
 ## 2. 技術選定（確定）
 
-| 領域 | 採用 | 理由 |
+| コンポーネント | 採用 | 役割 / 理由 |
 |---|---|---|
-| 可視化フロント | **Vite + Vue 3 + TypeScript**、Docker コンテナ | リッチなリアルタイム表示。VitePress と同じ Vue 系で統一しツールチェーンを一本化 |
-| チュートリアル | **VitePress**（`docs/tutorial/`） | 検索・ナビ・見栄え。日本語フォント明示で CJK 安全。自習＋ライブ投影を1つで両立 |
-| 図 | **Mermaid**（VitePress 内） | テキストで差分管理、ページフォント（Noto Sans JP）でCJK安全。構成図に最適 |
+| **app** | Python / FastAPI（既存） | ID発行ドメインAPIに純化。一覧・OpenAPI 強化・衝突記録のみ追加 |
+| **runner** | **Rust + Axum + tokio**（新規 `runner/`） | DB非依存の純HTTP負荷生成器。高並列(1000)を低CPU/メモリで。API サーバーと言語・ディレクトリ・コンテナを分離し純度を保つ |
+| **web** | **Vite + Vue 3 + TypeScript**（新規 `web/`） | リアルタイム可視化。VitePress と同じ Vue 系で統一 |
+| **docs** | **VitePress**（新規 `docs/tutorial/`） | 自習＋ライブ投影を両立。CJK安全。Mermaid 図 |
 | API ドキュメント/実行器 | **FastAPI 自動生成 OpenAPI ＋ Swagger UI(`/docs`)** | 実装＝単一の出典（zod-openapi 相当をネイティブ提供）。新規ライブラリ不要 |
 | スライド | 作らない | VitePress に吸収 |
 
-- 本フェーズは前フェーズの「新規ランタイム依存を増やさない」制約の**対象外**。教材UXのため **Node/Vue/VitePress を新規導入**する（ユーザー承認済み）。
-- Python 側ゲート（`ruff` / `mypy` / `pytest`）は引き続き緑を維持。フロント側にも軽量な品質ゲート（型チェック・lint）を用意する。
-- 「全コマンドはコンテナ内」方針を踏襲（Node コマンドもコンテナ内で実行）。
+- 本フェーズは前フェーズの「新規ランタイム依存を増やさない」制約の**対象外**。教材UXのため Node/Vue/VitePress・Rust/Axum を新規導入する（ユーザー承認済み）。
+- 各言語の品質ゲートを緑に保つ:
+  - Python: `ruff` / `ruff format` / `mypy` / `pytest`。
+  - Rust: `cargo fmt --check` / `cargo clippy -D warnings` / `cargo test`。
+  - Front: `vue-tsc`（型）/ ESLint（lint）/ 検証純関数の unit test。
+- 「全コマンドはコンテナ内」方針を踏襲（cargo・node コマンドもコンテナ内）。
 
 ---
 
-## 3. バックエンド補強
+## 3. バックエンド補強（app）
 
 ### 3.1 一覧エンドポイント `GET /users`
 - 現状 `/users` は `POST` と `GET /{id}` のみ。`crud.list_users` は実装済みだが未使用（オーフン）。
-- **`GET /users`（`limit`/`offset`、`list[UserRead]` を返す）を追加**し、フロントが発行済みIDを取得して可視化・検証できるようにする。TDD。
+- **`GET /users`（`limit`/`offset`、`list[UserRead]`）を追加**し、フロントが発行済みIDを取得して可視化・検証できるようにする。TDD。
 
-### 3.2 OpenAPI を教材品質に磨く
-- **409（衝突）レスポンスを宣言**: `POST /users` に `responses={409: {...}}` を付け、Swagger UI 上で「衝突時は 409」が明示されるようにする。
-- **リクエスト/レスポンス例**を `UserCreate`/`UserRead` に付与（`model_config`/`Field(examples=...)`）。
-- **エンドポイントの `summary`/`description`・`tags`** を整え、Swagger UI が読み物として成立するようにする。
-- FastAPI アプリの `title`/`description`/`version` を教材向けに設定。
-- これらは自動生成 OpenAPI を**実装から**リッチにするだけで、スキーマを手書きしない（DRY）。
+### 3.2 衝突台帳 `collisions` テーブル
+- **Alembic migration `0002_create_collisions`** で新設。列（案）: `id`(PK, serial)、`attempted_id`(str10)、`name`、`occurred_at`(ts)、`worker_id`(int, nullable)。
+- `POST /users` が 409（IntegrityError）を捕捉した際に **collision 行を記録**する。`users` の PK は「衝突の検出器」、`collisions` は「衝突の台帳」。
+  - ホットパス（発行成功）は `users` への1 insert のみ。**collision の例外パスだけ**が台帳へ追記 → 観測専用で一意性保証には関与しない。
+  - レプリカ横断で**単一の集計**が得られる（各 app が共有DBの同じ台帳へ追記）。
+- **`GET /collisions`**（件数・直近一覧）と、必要なら `DELETE /collisions`（デモ前リセット用）を提供。
 
-### 3.3 「かぶり」の正しい意味（教材上の明文化）
-- ユーザーテーブルの PK が一意性を機械的に担保するため、**重複行はDBに残らない**。衝突は発行時の **409 として現れる**（PK は衝突検出器）。
-- したがってフロント／チュートリアルは「かぶり＝バッチ発行中の 409 件数」で表現する（`scripts/collision_demo.py` と同じ観測モデル）。
-
----
-
-## 4. 可視化フロントエンド（`web/` サービス）
-
-### 4.1 役割と画面
-ブラウザから API を叩き、結果をリアルタイムに可視化する単一ページアプリ。表示要素:
-- **発行操作**: 単発発行ボタン＋バッチ発行（総数 `TOTAL`・並列度 `CONCURRENCY` を指定）。
-- **集計パネル**: 発行成功(201)・衝突(409)・重複率・スループットをリアルタイム更新。
-- **ID妥当性の可視化**: 各IDに対し「10文字 / base62 のみ / 直前より大きい（ソート整合）」を判定し、**要件未達IDを色分け＋件数集計**。検証は**フロント側 TypeScript**で行う（追加APIは一覧のみで足りる）。
-- **発行タイムライン/一覧**: 直近の発行IDと判定結果のリスト。
-
-### 4.2 通信とターゲット切替
-- 同一オリジンの **`/api` をプロキシ**で backend へ転送（CORS 回避）。
-- 転送先 upstream は環境変数で可変:
-  - 既定 = 単一サーバ（`app:8000` 等）→ ステージ1の学習（形式・ソート・単一プロセス一意性）。
-  - 衝突デモ時 = LB（`lb:8080`）→ ステージ2の衝突観測→修正確認。
-- これは `collision_demo.py` の `TARGET_URL` と同じ思想。compose のスタック選択でターゲットが決まる。
-
-### 4.3 コンテナ化と品質
-- `web/` に Vue+Vite アプリと `Dockerfile`。開発は Vite dev サーバ（`--host`、ホットリロード）をコンテナで起動。
-- フロント品質ゲート: `vue-tsc`（型）/ ESLint（lint）を**コンテナ内**で実行できるようにする。
-- ユニットテストは UX 部品としては最小限（検証ロジック＝base62/長さ/順序判定の純関数）に対して付ける。
+### 3.3 OpenAPI を教材品質に磨く
+- **409 を宣言**: `POST /users` に `responses={409: {...}}`。Swagger UI 上で「衝突時は 409」が明示。
+- **例**を `UserCreate`/`UserRead` に付与（`Field(examples=...)`）。`summary`/`description`/`tags` を整備。
+- FastAPI の `title`/`description`/`version` を教材向けに設定。
+- 自動生成 OpenAPI を**実装から**リッチにするだけ（スキーマ手書きしない＝DRY）。
 
 ---
 
-## 5. チュートリアル（VitePress, `docs/tutorial/`）
+## 4. 負荷ランナー（runner, Rust + Axum）
 
-### 5.1 構成（章立て）
-自習で読め、ライブでも投影できる粒度に分割:
-1. **イントロ / Webの基本構成** — ブラウザ→フロント→API→DB、LB の役割。Mermaid 構成図（**ステージ1=LBなし / ステージ2=LB登場**の対比）。← 旧「スライド」の中身。
-2. **環境を立ち上げる** — コンテナ起動、各URL（API `/docs`・フロント・チュートリアル）。コピペ可能な手順。
-3. **APIに触れる** — Swagger UI(`/docs`) の「Try it out」で `POST /users`・`GET /users` を実行。**同じ操作の curl** を併記（コピペ可）。
-4. **ステージ1：ID発行ロジックを書く** — `ProblemIssuer.issue` 穴埋め。要件、フロント／`pytest` での確認。
-5. **衝突を観測する** — 並列スタック起動、フロント（とスクリプト）で 409 を観測。なぜ起きるか（鳩の巣・定量分析、設計書第5章）。
+### 4.1 役割
+- API サーバーとは独立した **HTTP 負荷生成サービス**。DBには触れない（純HTTPクライアント）。
+- エンドポイント `POST /runs`（body: `{ n, concurrency, target }`）:
+  - `target`（例 `http://lb:8080` or `http://app:8000`）へ `POST /users` を**並列度 `concurrency` で発行**。
+  - **N件成功（201）するまで継続**し、その間の **409 件数・総試行数・所要時間・スループット**を集計。
+  - 進捗は **SSE でストリーム**（UIがリアルタイム更新）。最終サマリも返す。
+- 並列度: 1（単一＝衝突ゼロ）/ 100 / 1000（広範＝衝突発生）。tokio + reqwest（or hyper）で高並列を低資源に。
+
+### 4.2 分離方針
+- `runner/` に Rust crate（`Cargo.toml`, `src/`）。専用 `Dockerfile`、専用コンテナ。
+- 既存 `scripts/collision_demo.py`（CLI）の観測モデル（201/409 集計）を Rust へ移植・常駐サービス化。CLI は残置（最小の代替手段）。
+
+---
+
+## 5. 可視化フロントエンド（web, Vue + Vite）
+
+### 5.1 画面
+- **単発発行**（低並列）: ブラウザから直接 `app` へ `POST /users`。ステージ1の「1件ずつ発行」体験。
+- **負荷テスト**: `runner` の `POST /runs` を起動（N・並列度・target 指定）、SSE で **201/409/重複率/スループット**をリアルタイム表示。
+- **ID妥当性の可視化**: `GET /users` の各IDに「10文字 / base62 のみ / 直前より大きい（ソート整合）」を判定し、**要件未達IDを色分け＋集計**。検証は**フロント側 TypeScript の純関数**（追加APIは一覧と台帳のみで足りる）。
+- **衝突台帳ビュー**: `GET /collisions` の件数・一覧表示。runner の HTTP 集計と台帳が一致することを**相互チェック**として見せられる。
+
+### 5.2 通信
+- 同一オリジンの **`/api` をプロキシ**で各サービスへ（CORS 回避）。upstream は環境変数で可変（既定=単一 `app`、衝突デモ=`lb`）。runner へは別パスでプロキシ。
+- コンテナ化: Vite dev サーバ（`--host`、ホットリロード）をコンテナで起動。
+
+---
+
+## 6. チュートリアル（VitePress, `docs/tutorial/`）
+
+### 6.1 章立て
+1. **イントロ / Webの基本構成** — ブラウザ→フロント→API→DB、LBの役割。Mermaid（**ステージ1=LBなし / ステージ2=LB登場**の対比）。← 旧「スライド」の中身。
+2. **環境を立ち上げる** — コンテナ起動、各URL（API `/docs`・フロント・runner・チュートリアル）。コピペ手順。
+3. **APIに触れる** — Swagger UI(`/docs`) の「Try it out」で `POST /users`・`GET /users`。**同じ操作の curl** を併記。
+4. **ステージ1：ID発行ロジックを書く** — `ProblemIssuer.issue` 穴埋め。フロント単発発行／`pytest` で確認。
+5. **衝突を観測する** — 並列スタック起動、**runner で並列1→100→1000**を実行、409 と台帳を観測。なぜ起きるか（鳩の巣・定量、設計書第5章）。
 6. **ステージ2：worker-id で直す** — 修正、再観測で衝突ゼロ。解答例 API との対比。
 7. **付録** — IDビット構造、設計判断、トラブルシュート。
 
-### 5.2 単一の出典（DRY）
-- チュートリアルは、リポジトリ内の**実コード・実 curl・実コマンド**を出典として参照し、記述のドリフトを防ぐ。
-- curl は VitePress コードブロック（コピーボタン付き）で各所に埋め込む。
-
-### 5.3 配信
-- VitePress を**コンテナ内**でビルド／プレビューできるようにする（dev サーバ or ビルド済み静的配信）。README は概要＋チュートリアルへの誘導に絞る。
+### 6.2 単一の出典（DRY）・配信
+- 実コード・実 curl・実コマンドを出典として参照（ドリフト防止）。curl はコピーボタン付きコードブロック。
+- VitePress を**コンテナ内**でビルド／プレビュー。README は概要＋誘導に整理。
 
 ---
 
-## 6. 実行構成 / リポジトリ配置
+## 7. 実行構成 / リポジトリ配置
 
-**新規**
-- `web/` — Vue+Vite アプリ（`Dockerfile`、`src/`、`vite.config.ts`、型/ lint 設定）。
-- `docs/tutorial/` — VitePress サイト（`.vitepress/config.*`、章立て Markdown、Mermaid 図）。
-- フロント／docs 用の compose サービス（`web`、必要なら `docs` プレビュー）。
+**新規ディレクトリ/サービス**
+- `runner/` — Rust + Axum クレート、専用 `Dockerfile`。compose `runner` サービス。
+- `web/` — Vue+Vite アプリ、専用 `Dockerfile`。compose `web` サービス。
+- `docs/tutorial/` — VitePress サイト。compose `docs`（プレビュー）サービス（任意）。
 
 **変更**
-- `app/api/routes_user.py` — `GET /users` 追加、`responses`/`summary`/`tags` 付与。
-- `app/schemas/user.py` — `examples` 付与。
-- `app/main.py` — FastAPI `title`/`description`/`version`。
-- `compose.yaml` — `web`（と `docs`）サービス、`/api` プロキシ設定。
-- `README.md` — チュートリアルへの誘導に整理。
+- `app/api/routes_user.py` — `GET /users`、`responses`/`summary`/`tags`、409時の台帳記録。
+- `app/api/routes_collisions.py`（新規）— `GET /collisions`（＋任意の `DELETE`）。
+- `app/models/collision.py`・`app/crud/collision.py`・`migrations/versions/0002_create_collisions.py`（新規）。
+- `app/schemas/user.py` — `examples`。`app/main.py` — `title`/`description`/`version`、新ルーター結線。
+- `compose.yaml` — `web`/`runner`/(`docs`) サービス、`/api` プロキシ。
+- `README.md` — チュートリアルへ誘導。
 
 ### サービス関係（概念）
 ```mermaid
 flowchart LR
   Browser --> Web[web: Vue/Vite]
-  Web -->|/api proxy| Target{target}
-  Target -->|stage1 学習| App[app: 単一]
-  Target -->|stage2 衝突| LB[lb: nginx] --> App1 & App2 & App3
-  App & App1 & App2 & App3 --> DB[(PostgreSQL)]
-  Browser -.-> Swagger[API /docs Swagger UI]
+  Browser -.-> Swagger[app /docs Swagger UI]
   Browser -.-> Docs[docs: VitePress]
+  Web -->|単発発行 /api| App[app: 単一]
+  Web -->|負荷起動 /runs| Runner[runner: Rust/Axum]
+  Runner -->|並列 POST /users| TargetSel{target}
+  TargetSel -->|stage1 学習| App
+  TargetSel -->|stage2 衝突| LB[lb: nginx] --> App1 & App2 & App3
+  App & App1 & App2 & App3 --> DB[(PostgreSQL: users + collisions)]
 ```
 
 ---
 
-## 7. テスト・品質方針
-- **バックエンド**: `GET /users`・OpenAPI 例・409 宣言を TDD。既存 23 テスト＋追加を緑に保つ。`ruff`/`mypy` 緑維持。
-- **フロント**: 検証ロジック（base62/長さ/順序）の純関数にユニットテスト。`vue-tsc`/ESLint をゲート化。
-- **チュートリアル**: 記載コマンドが実環境で通ることを実機確認（各章の手順を一度なぞる）。
+## 8. テスト・品質方針
+- **app**: `GET /users`・`collisions` 記録/取得・OpenAPI(409/例) を TDD。既存 23 テスト＋追加を緑に。`ruff`/`mypy` 緑維持。
+- **runner**: 集計ロジック（成功までの継続・409計数）を `cargo test`。`cargo fmt`/`clippy` 緑。
+- **web**: 検証純関数（base62/長さ/順序）に unit test。`vue-tsc`/ESLint ゲート。
+- **チュートリアル**: 各章のコマンドを実機で一度なぞって通ることを確認。
 - 各タスクは「テスト先行→失敗確認→最小実装→通過確認→コミット」を踏襲。
 
 ---
 
-## 8. CLAUDE.md 4原則との対応
-- **KISS**: 検証はフロント側純関数、API追加は一覧のみ。OpenAPI は自動生成を磨くだけ。
-- **YAGNI**: スライド／認証／codegen（既定）／本番最適化はやらない。codegen は任意拡張として記載のみ。
-- **DRY＋直交性**: OpenAPI は実装が単一出典。チュートリアルは実コード/実コマンドを参照。媒体ごとに最適化された文章は「知識の重複」ではない。
-- **対称性**: ステージ1/2 を「LBの有無」という実際の差異として図・章立てで対称に描く。
+## 9. CLAUDE.md 4原則との対応
+- **KISS**: 検証はフロント純関数、app追加は一覧＋台帳のみ、OpenAPI は自動生成を磨くだけ。
+- **YAGNI**: スライド／認証／codegen（既定不採用）／本番最適化はやらない。
+- **DRY＋直交性**: OpenAPI は実装が単一出典。runner は app と関心を分離（負荷生成 vs ドメイン）。台帳と runner 集計は別観点（系の記録 vs 当該 runの観測）で、偽の重複ではない。
+- **対称性**: ステージ1/2 を「LBの有無」「並列度 1 vs 多」という実差で対称に描く。
 
 ---
 
-## 9. 未確定（実装計画で詰める）
-- `web` の本番ビルド配信（nginx 静的）まで作るか、dev サーバのみか（既定は dev サーバで KISS、必要なら後続）。
-- VitePress 配信をコンテナサービス化するか、ビルド成果物のみとするか。
-- フロントの状態管理の粒度（素の composition API で足りる見込み）。
-- OpenAPI からの型 codegen を採用するか（既定: 不採用＝手書き fetch。採用時は openapi-typescript を候補）。
+## 10. 未確定（実装計画で詰める）
+- runner の `POST /runs` 進捗配信は SSE を既定とするが、初手は最終サマリ＋ポーリングで簡素化する余地あり。
+- `web`/`docs` を本番ビルド静的配信までやるか、dev サーバ止まりか（既定は dev サーバ＝KISS）。
+- `collisions` 記録列の最小セット（`attempted_id`/`occurred_at` のみで足りるか、`worker_id` も持つか）。
+- OpenAPI からの型 codegen（既定: 不採用＝手書き fetch。採用時 openapi-typescript）。
