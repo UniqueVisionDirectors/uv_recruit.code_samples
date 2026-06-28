@@ -26,7 +26,9 @@ def test_single_generator_unique_within_one_ms():
 
 def test_ids_sortable_by_issue_order():
     clock = {"ms": 0}
-    gen = UserIdGenerator(0, now_ms=lambda: EPOCH_MS + clock["ms"], rng=random.Random(0))
+    gen = UserIdGenerator(
+        0, now_ms=lambda: EPOCH_MS + clock["ms"], rng=random.Random(0)
+    )
     first = gen.issue()
     clock["ms"] = 5
     second = gen.issue()
