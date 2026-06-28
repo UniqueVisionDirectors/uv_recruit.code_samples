@@ -108,6 +108,30 @@ scripts/     補助スクリプト（collision_demo.py など）
 > Dev Containers 内ではアプリは自動起動しない（デバッグ起動用にポート 8000 を空けるため）。
 > コンテナ外からの `docker compose up` はこれまで通り uvicorn を自動起動する。
 
+## コンテナとファイル所有権
+
+`docker compose up` / `docker compose run` はデフォルトで root 実行のため、bind マウントに書き込むとホスト側ファイルが root 所有になることがあります。
+
+**恒久対策（compose.yaml 適用済み）:**
+
+- `docs` サービス: `user: "1000:1000"` でホスト UID として実行 → `.vitepress/cache` / `dist` が 1000 所有で作られる。
+- `app` / `solution` サービス: `PYTHONDONTWRITEBYTECODE=1` / `MYPY_CACHE_DIR` / `RUFF_CACHE_DIR` / `PYTEST_ADDOPTS` でキャッシュを `/tmp`（コンテナ内）に逃がし、bind マウントへの書き込みを抑制。
+- `runner` / `web`: named volume (`cargo_target`, `node_modules`) がホスト bind-mount を保護しているため root 実行のまま問題なし。
+
+**一時的な `docker run` / `docker compose run` を使う場合:**
+
+bind マウントに書き込む可能性があるときは `--user $(id -u):$(id -g)` を付けてください。
+
+```bash
+docker compose run --rm --user $(id -u):$(id -g) app uv run pytest -q
+```
+
+**root 所有ファイルが生じた場合:**
+
+```bash
+scripts/fix-ownership.sh
+```
+
 ## 注意（本番運用に向けて）
 
 このリポジトリは「Docker だけで開発を完結させる」ことを目的とした開発用構成です。

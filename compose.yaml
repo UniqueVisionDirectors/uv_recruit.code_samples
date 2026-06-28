@@ -18,6 +18,10 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://postgres:postgres@db:5432/app
       ID_STRATEGY: ${ID_STRATEGY:-problem}
+      PYTHONDONTWRITEBYTECODE: "1"
+      MYPY_CACHE_DIR: /tmp/mypy
+      RUFF_CACHE_DIR: /tmp/ruff
+      PYTEST_ADDOPTS: "-p no:cacheprovider"
     volumes:
       - .:/app
       - venv:/app/.venv
@@ -33,6 +37,10 @@ services:
       DATABASE_URL: postgresql+psycopg://postgres:postgres@db:5432/app
       ID_STRATEGY: stage2
       WORKER_ID: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+      MYPY_CACHE_DIR: /tmp/mypy
+      RUFF_CACHE_DIR: /tmp/ruff
+      PYTEST_ADDOPTS: "-p no:cacheprovider"
     volumes:
       - .:/app
       - venv:/app/.venv
@@ -68,6 +76,7 @@ services:
 
   docs:
     build: ./docs/tutorial
+    user: "1000:1000"
     ports:
       - "5174:5174"
     volumes:
