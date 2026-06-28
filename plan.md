@@ -787,7 +787,7 @@ git commit -m "feat: integrate web+runner into compose stacks (e2e collision dem
 
 **Interfaces:** Produces: `docs` コンテナが VitePress dev（`5174`）でサイトを配信。サイドバーに 7 章。Mermaid が描画される。
 
-- [ ] **Step 1: VitePress を導入**
+- [x] **Step 1: VitePress を導入**（`--user 1000:1000` で root 所有回避）
 
 Run:
 ```bash
@@ -795,12 +795,12 @@ docker run --rm -v "$PWD/docs/tutorial":/d -w /d node:22-slim sh -c "npm init -y
 ```
 `package.json` scripts に `docs:dev: "vitepress dev --host --port 5174"`, `docs:build: "vitepress build"`。
 
-- [ ] **Step 2: 設定とトップページ**
+- [x] **Step 2: 設定とトップページ**（`withMermaid` ラップ・7章サイドバー・`type:module`）
 
 `docs/tutorial/.vitepress/config.ts`（Mermaid 有効化・サイドバー7章・日本語フォントは既定で可、必要なら CSS で Noto Sans JP を指定）。`index.md` にイントロ。
 > Mermaid プラグインの結線方法は実装時に context7 で確認。
 
-- [ ] **Step 3: 起動確認**
+- [x] **Step 3: 起動確認**（HTTP 200・Mermaid ロード確認）
 
 Run:
 ```bash
@@ -808,7 +808,7 @@ docker compose up -d --build docs && sleep 4 && curl -s -o /dev/null -w "%{http_
 ```
 Expected: HTTP 200。
 
-- [ ] **Step 4: コミット**
+- [x] **Step 4: コミット**
 
 ```bash
 git add docs/tutorial compose.yaml
