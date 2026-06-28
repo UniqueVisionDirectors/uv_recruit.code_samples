@@ -1,3 +1,6 @@
+#[allow(dead_code)]
+mod store;
+
 use axum::{routing::get, Json, Router};
 use serde_json::{json, Value};
 
@@ -11,6 +14,15 @@ async fn healthz() -> Json<Value> {
 
 #[tokio::main]
 async fn main() {
+    let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+    let pool = sqlx::PgPool::connect(&database_url)
+        .await
+        .expect("failed to connect to database");
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("failed to run migrations");
+
     let listener = tokio::net::TcpListener::bind("0.0.0.0:9000").await.unwrap();
     axum::serve(listener, app()).await.unwrap();
 }
