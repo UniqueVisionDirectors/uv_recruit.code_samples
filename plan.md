@@ -689,7 +689,7 @@ git commit -m "feat: add ProblemIssuer stub for learners"
 
 > 注: 本タスクでは `create_app` に health のみ結線し、`app` を起動可能に保つ。`/users` ルーターは Task 8 で結線する（タスク境界をまたぐ import エラーを避けるため）。
 
-- [ ] **Step 1: 設定に id_strategy / worker_id を追加**
+- [x] **Step 1: 設定に id_strategy / worker_id を追加**
 
 `app/core/config.py` を次へ変更（`Settings` 本体を置換）:
 ```python
@@ -712,7 +712,7 @@ def get_settings() -> Settings:
     return Settings()
 ```
 
-- [ ] **Step 2: `build_issuer` ファクトリを作成**
+- [x] **Step 2: `build_issuer` ファクトリを作成**
 
 `app/idgen/factory.py`:
 ```python
@@ -732,7 +732,7 @@ def build_issuer(settings: Settings) -> IdIssuer:
     return UserIdGenerator(worker_id=settings.worker_id)
 ```
 
-- [ ] **Step 3: `app/main.py` を `create_app` ファクトリへ変更**
+- [x] **Step 3: `app/main.py` を `create_app` ファクトリへ変更**
 
 ```python
 from fastapi import FastAPI
@@ -758,12 +758,12 @@ def create_app(issuer: IdIssuer) -> FastAPI:
 app = create_app(build_issuer(get_settings()))
 ```
 
-- [ ] **Step 4: 既存テストとゲートが緑であることを確認**
+- [x] **Step 4: 既存テストとゲートが緑であることを確認**
 
 Run: `docker compose run --rm app uv run pytest -q && docker compose run --rm app uv run mypy app`
 Expected: PASS（health/idgen/crud のテストが通る）、mypy エラーなし。
 
-- [ ] **Step 5: コミット**
+- [x] **Step 5: コミット**
 
 ```bash
 git add app/core/config.py app/idgen/factory.py app/main.py
@@ -789,7 +789,7 @@ git commit -m "feat: app factory and issuer selection via ID_STRATEGY"
 git rm app/api/routes_item.py
 ```
 
-- [ ] **Step 2: API テストを書く**
+- [x] **Step 2: API テストを書く**
 
 `tests/test_api_users.py`:
 ```python
@@ -838,7 +838,7 @@ async def test_ids_are_sorted_by_issue_order(client):
     assert first < second
 ```
 
-- [ ] **Step 3: `app/main.py` に user ルーターを結線**
+- [x] **Step 3: `app/main.py` に user ルーターを結線**
 
 `app/main.py` の import に追加し、`create_app` 内に結線:
 ```python
@@ -849,12 +849,12 @@ from app.api import routes_health, routes_user
     application.include_router(routes_user.router)
 ```
 
-- [ ] **Step 4: テストが失敗することを確認**
+- [x] **Step 4: テストが失敗することを確認**
 
 Run: `docker compose run --rm app uv run pytest tests/test_api_users.py -v`
 Expected: FAIL（`app.api.routes_user` が無い）
 
-- [ ] **Step 5: `app/api/routes_user.py` を実装**
+- [x] **Step 5: `app/api/routes_user.py` を実装**
 
 ```python
 from typing import cast
@@ -904,12 +904,12 @@ async def get_user(
     return UserRead.model_validate(user, from_attributes=True)
 ```
 
-- [ ] **Step 6: テストが通ることを確認**
+- [x] **Step 6: テストが通ることを確認**
 
 Run: `docker compose run --rm app uv run pytest tests/test_api_users.py -v`
 Expected: PASS（4件）
 
-- [ ] **Step 7: 全テスト・全ゲートを確認**
+- [x] **Step 7: 全テスト・全ゲートを確認**
 
 Run:
 ```bash
@@ -920,7 +920,7 @@ docker compose run --rm app uv run pytest -q
 ```
 Expected: すべて PASS。
 
-- [ ] **Step 8: コミット**
+- [x] **Step 8: コミット**
 
 ```bash
 git add app/api/routes_user.py app/main.py tests/test_api_users.py
@@ -936,7 +936,7 @@ git commit -m "feat: add /users endpoints with issuer injection"
 
 **Interfaces:** Produces: `app`（出題用, `ID_STRATEGY=problem`, host 8000）／`solution`（解答例, `ID_STRATEGY=stage2`, `WORKER_ID=1`, host 8001）。両者は同一イメージ・同一 DB。
 
-- [ ] **Step 1: `compose.yaml` を更新**
+- [x] **Step 1: `compose.yaml` を更新**
 
 `app` サービスの `environment` に `ID_STRATEGY` を追加し、`solution` サービスを追記:
 ```yaml
@@ -970,7 +970,7 @@ git commit -m "feat: add /users endpoints with issuer injection"
         condition: service_healthy
 ```
 
-- [ ] **Step 2: 両サービスが起動し応答することを確認**
+- [x] **Step 2: 両サービスが起動し応答することを確認**
 
 Run:
 ```bash
@@ -980,7 +980,7 @@ docker compose down
 ```
 Expected: `solution` が 10文字 ID を返す JSON を出力。
 
-- [ ] **Step 3: コミット**
+- [x] **Step 3: コミット**
 
 ```bash
 git add compose.yaml
@@ -996,7 +996,7 @@ git commit -m "feat: add problem and solution compose services"
 
 **Interfaces:** Produces: 3 つの app（`app1/app2/app3`, `WORKER_ID=1/2/3`, `ID_STRATEGY` は env 切替）＋ nginx `lb`（host 8080 → 各 app:8000 ラウンドロビン）。`scripts/collision_demo.py` が LB に並列 POST して 201/409/重複を集計。
 
-- [ ] **Step 1: nginx 設定を作成**
+- [x] **Step 1: nginx 設定を作成**
 
 `demo/nginx.conf`:
 ```nginx
@@ -1016,7 +1016,7 @@ http {
 }
 ```
 
-- [ ] **Step 2: デモ用 compose を作成**
+- [x] **Step 2: デモ用 compose を作成**（各 app に専用 venv volume。共有 volume だと uv sync が競合する）
 
 `compose.demo.yaml`:
 ```yaml
@@ -1074,7 +1074,7 @@ services:
 
 > `ID_STRATEGY=stage1`（既定）では3台とも worker_id=0 扱い → 衝突する。`ID_STRATEGY=stage2` では各台が `WORKER_ID` 1/2/3 を使う → 衝突しない。
 
-- [ ] **Step 3: 観測スクリプトを作成**
+- [x] **Step 3: 観測スクリプトを作成**（dead code 除去・既定負荷を引き上げ）
 
 `scripts/collision_demo.py`:
 ```python
@@ -1132,7 +1132,7 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-- [ ] **Step 4: 素朴解（stage1）で衝突を観測**
+- [x] **Step 4: 素朴解（stage1）で衝突を観測**（TOTAL=12000/CONCURRENCY=250 で conflicts(409)=1 を観測）
 
 Run:
 ```bash
@@ -1143,7 +1143,7 @@ docker compose -f compose.yaml -f compose.demo.yaml down -v
 ```
 Expected: `conflicts(409)` が 1 以上、または `duplicate_ids` が 1 以上 →「衝突を観測しました」。
 
-- [ ] **Step 5: 修正後（stage2）で衝突しないことを確認**
+- [x] **Step 5: 修正後（stage2）で衝突しないことを確認**（同負荷で conflicts=0, duplicate_ids=0）
 
 Run:
 ```bash
@@ -1154,7 +1154,7 @@ docker compose -f compose.yaml -f compose.demo.yaml down -v
 ```
 Expected: `conflicts(409)=0`, `duplicate_ids=0` →「衝突なし」。
 
-- [ ] **Step 6: コミット**
+- [x] **Step 6: コミット**
 
 ```bash
 git add compose.demo.yaml demo/nginx.conf scripts/collision_demo.py
@@ -1170,7 +1170,7 @@ git commit -m "feat: parallel collision demo (lb + workers + observer script)"
 
 **Interfaces:** Produces: 教材の使い方（2ステージ・出題/解答・衝突デモ）を README に記載。（旧 `tasks.md` は計画着手前に削除済み。）
 
-- [ ] **Step 1: README を教材内容へ更新**
+- [x] **Step 1: README を教材内容へ更新**
 
 `README.md` に次の節を追加（既存の起動/開発コマンド節は維持し、`Item` への言及を `users` に置換）:
 ```markdown
@@ -1200,7 +1200,7 @@ git commit -m "feat: parallel collision demo (lb + workers + observer script)"
 `docker compose up solution`（http://localhost:8001/docs）で stage2 実装を直接試せる。
 ```
 
-- [ ] **Step 2: 全ゲートを最終確認**
+- [x] **Step 2: 全ゲートを最終確認**（ruff/format/mypy/pytest すべて緑、23 passed）
 
 Run:
 ```bash
@@ -1211,7 +1211,7 @@ docker compose run --rm app uv run pytest -q
 ```
 Expected: すべて PASS。
 
-- [ ] **Step 3: コミット**
+- [x] **Step 3: コミット**
 
 ```bash
 git add README.md
