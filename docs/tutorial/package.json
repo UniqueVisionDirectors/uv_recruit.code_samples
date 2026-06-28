@@ -1,0 +1,18 @@
+{
+  "name": "tutorial",
+  "version": "1.0.0",
+  "description": "VitePress tutorial site",
+  "type": "module",
+  "scripts": {
+    "docs:dev": "vitepress dev --host --port 5174",
+    "docs:build": "vitepress build"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "mermaid": "^11.16.0",
+    "vitepress": "^1.6.4",
+    "vitepress-plugin-mermaid": "^2.0.17"
+  }
+}

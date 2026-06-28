@@ -66,6 +66,14 @@ services:
       - app
       - runner
 
+  docs:
+    build: ./docs/tutorial
+    ports:
+      - "5174:5174"
+    volumes:
+      - ./docs/tutorial:/docs
+      - /docs/node_modules
+
 volumes:
   pgdata:
   venv:
