@@ -10,6 +10,24 @@
 
 ---
 
+## 現在地（最終更新: 2026-06-28）
+
+**完了: Task 1〜9（11 コミット、push 済み）。次に着手: Task 10。**
+
+- ✅ **グループA（app）完了**: Task 1（`GET /users`）、Task 2（OpenAPI 強化: 409/examples/メタ）。
+- ✅ **グループB（runner, Rust/Axum）完了**: Task 3（雛形+healthz）、Task 4（`jobs` 永続化 sqlx）、Task 5（負荷エンジン tokio+mpsc）、Task 6（ジョブAPI `POST/GET /runs`）。
+- 🟡 **グループC（web, Vue）進行中**: Task 7（雛形+/api proxy）✅、Task 8（ID 検証純関数）✅、Task 9（単発発行UI）✅。**残: Task 10（ジョブ起動UI）**。
+- ⬜ **未着手**: Task 11（compose 統合 e2e 衝突体験）、Task 12（VitePress 雛形）、Task 13（チュートリアル7章）、Task 14（README+最終ゲート）、**Task 15（全依存ライブラリの安全な最新化・Rust Edition 含む）**。
+
+**実装メモ（再開時に重要）:**
+- runner クレートは **lib+bin 構成**（`runner/src/lib.rs` が `pub mod api/engine/store`、`main.rs` と `tests/api.rs` が `runner::` で参照）。`AppState { store, client }`。sqlx は**ランタイムクエリ**（`query`/`query_as`、`!` マクロ不使用）でビルド時 DB 不要。
+- web の ESLint は **flat config**（`eslint.config.js`、`@vue/eslint-config-typescript` v14 の `withVueTs`）。`.eslintrc.cjs` は非対応。`test` は `vitest run --passWithNoTests`。proxy は `/api/app`→app:8000、`/api/runner`→runner:9000。
+- web の api.ts: `createUser`/`listUsers`（`UserRead {id,name,created_at}`）。非2xx は throw。Task 10 で `startRun`/`listRuns`/`getRun` と `RunJob` 型を追加。
+- **デフォルト `app` は `ID_STRATEGY=problem`** で `issue()` が `NotImplementedError` を投げる（教材の穴埋め）。動作確認は `solution`(stage2) か demo スタックを使う。
+- ホストの **5173 ポートが別コンテナ（promana_frontend）と衝突する可能性**あり（Task 11 e2e で注意）。
+- Rust crate は固定済み（`runner/Cargo.lock`）: axum 0.8.9 / sqlx 0.8.6 / tokio 1.52 / reqwest 0.12.28。web: vite 8.1 / vue 3.5.38 / vitest 4.1.9 / eslint 10.6。
+- 各タスクのレビューは task-scoped で完了。Minor 指摘は `.superpowers/sdd/progress.md`（ローカル scratch）に蓄積。**全タスク完了後に whole-branch review を実施すること。**
+
 ## 作業の再開方法（Resume）
 
 > 新しいセッションで「**plan.md を確認し、作業を再開してください**」と指示されたら、この手順で進める。
@@ -86,7 +104,7 @@
 - Consumes: 既存 `crud.list_users(session, limit, offset) -> list[User]`, `get_session`, `UserRead`。
 - Produces: `GET /users?limit&offset -> list[UserRead]`（200, `id` 昇順）。
 
-- [ ] **Step 1: 失敗するテストを書く**
+- [x] **Step 1: 失敗するテストを書く**
 
 `tests/test_api_users.py` に追記:
 ```python
@@ -102,12 +120,12 @@ async def test_list_users_returns_sorted(client):
     assert ids == sorted(ids)  # 発行順＝ソート順
 ```
 
-- [ ] **Step 2: 失敗を確認**
+- [x] **Step 2: 失敗を確認**
 
 Run: `docker compose run --rm app uv run pytest tests/test_api_users.py::test_list_users_returns_sorted -v`
 Expected: FAIL（`GET /users` 未定義→404 で assert 失敗）
 
-- [ ] **Step 3: 一覧ルートを実装**
+- [x] **Step 3: 一覧ルートを実装**
 
 `app/api/routes_user.py`、`get_issuer` の定義後・`@router.post(...)` の前に追加:
 ```python
@@ -121,12 +139,12 @@ async def list_users(
     return [UserRead.model_validate(u, from_attributes=True) for u in users]
 ```
 
-- [ ] **Step 4: 通過を確認**
+- [x] **Step 4: 通過を確認**
 
 Run: `docker compose run --rm app uv run pytest tests/test_api_users.py -v`
 Expected: PASS（既存4件＋新規1件）
 
-- [ ] **Step 5: コミット**
+- [x] **Step 5: コミット**
 
 ```bash
 git add app/api/routes_user.py tests/test_api_users.py
@@ -143,7 +161,7 @@ git commit -m "feat(app): add GET /users list endpoint"
 **Interfaces:**
 - Produces: `/openapi.json` に `POST /users` の 409 レスポンス定義と `UserCreate`/`UserRead` の examples が含まれる。挙動（200/201/404/409）は不変。
 
-- [ ] **Step 1: 失敗するテストを書く**
+- [x] **Step 1: 失敗するテストを書く**
 
 `tests/test_api_users.py` に追記:
 ```python
@@ -155,12 +173,12 @@ async def test_openapi_declares_conflict_and_examples(client):
     assert "example" in user_create or "examples" in str(user_create)
 ```
 
-- [ ] **Step 2: 失敗を確認**
+- [x] **Step 2: 失敗を確認**
 
 Run: `docker compose run --rm app uv run pytest tests/test_api_users.py::test_openapi_declares_conflict_and_examples -v`
 Expected: FAIL（409 未宣言）
 
-- [ ] **Step 3: スキーマに例を付ける**
+- [x] **Step 3: スキーマに例を付ける**
 
 `app/schemas/user.py` を置換:
 ```python
@@ -191,7 +209,7 @@ class UserRead(BaseModel):
     created_at: datetime
 ```
 
-- [ ] **Step 4: POST に 409 宣言と summary/tags を付ける**
+- [x] **Step 4: POST に 409 宣言と summary/tags を付ける**
 
 `app/api/routes_user.py` の `@router.post(...)` デコレータを置換:
 ```python
@@ -206,7 +224,7 @@ class UserRead(BaseModel):
 )
 ```
 
-- [ ] **Step 5: アプリのメタ情報を設定**
+- [x] **Step 5: アプリのメタ情報を設定**
 
 `app/main.py` の `FastAPI(...)` 呼び出しを置換:
 ```python
@@ -220,7 +238,7 @@ class UserRead(BaseModel):
     )
 ```
 
-- [ ] **Step 6: 通過と全ゲートを確認**
+- [x] **Step 6: 通過と全ゲートを確認**
 
 Run:
 ```bash
@@ -229,7 +247,7 @@ docker compose run --rm app uv run ruff check . && docker compose run --rm app u
 ```
 Expected: すべて PASS。
 
-- [ ] **Step 7: コミット**
+- [x] **Step 7: コミット**
 
 ```bash
 git add app/api/routes_user.py app/schemas/user.py app/main.py tests/test_api_users.py
@@ -251,7 +269,7 @@ git commit -m "feat(app): enrich auto-generated OpenAPI (409, examples, metadata
 **Interfaces:**
 - Produces: `runner` コンテナが `GET /healthz -> 200 {"status":"ok"}` を返す。`cargo fmt/clippy/test` が緑。
 
-- [ ] **Step 1: クレートと依存を定義**
+- [x] **Step 1: クレートと依存を定義**
 
 `runner/Cargo.toml`:
 ```toml
@@ -277,7 +295,7 @@ httpmock = "0.7"
 ```
 > バージョンは実装時に context7 で最新安定を確認・固定する。
 
-- [ ] **Step 2: healthz だけの失敗するテストを書く**
+- [x] **Step 2: healthz だけの失敗するテストを書く**
 
 `runner/src/main.rs`（初期）:
 ```rust
@@ -317,7 +335,7 @@ mod tests {
 ```
 > `tower` を dev/通常依存に追加（`ServiceExt::oneshot` 用）。実装時に context7 で axum テストの推奨形を確認。
 
-- [ ] **Step 3: Dockerfile とサービスを用意**
+- [x] **Step 3: Dockerfile とサービスを用意**
 
 `runner/Dockerfile`:
 ```dockerfile
@@ -348,7 +366,7 @@ target
 ```
 `volumes:` セクションに `cargo_target:` を追加。
 
-- [ ] **Step 4: テストとゲートが緑**
+- [x] **Step 4: テストとゲートが緑**
 
 Run:
 ```bash
@@ -358,7 +376,7 @@ docker compose run --rm runner cargo clippy -- -D warnings
 ```
 Expected: すべて PASS。
 
-- [ ] **Step 5: コミット**
+- [x] **Step 5: コミット**
 
 ```bash
 git add runner compose.yaml
@@ -376,7 +394,7 @@ git commit -m "feat(runner): scaffold Axum service with healthz"
 **Interfaces:**
 - Produces: `Job` 構造体（`job_id: Uuid`, `target: String`, `n: i64`, `concurrency: i64`, `status: String`, `created_count: i64`, `conflict_count: i64`, `attempt_count: i64`, `started_at`, `finished_at: Option`, `duration_ms: Option<i64>`, `error: Option<String>`）。`JobStore` に `new(pool)`, `insert_running(job)`, `complete(job_id, counts, duration)`, `fail(job_id, error)`, `get(job_id) -> Option<Job>`, `list() -> Vec<Job>`。
 
-- [ ] **Step 1: マイグレーションを書く**
+- [x] **Step 1: マイグレーションを書く**
 
 `runner/migrations/0001_create_jobs.sql`:
 ```sql
@@ -396,24 +414,24 @@ CREATE TABLE IF NOT EXISTS jobs (
 );
 ```
 
-- [ ] **Step 2: store のテストを書く（DB 結合）**
+- [x] **Step 2: store のテストを書く（DB 結合）**
 
 `runner/src/store.rs` に `#[cfg(test)]` を含め、`insert_running` → `get` → `complete` → `get` が状態遷移することを検証するテストを書く（`DATABASE_URL` 必須、`sqlx::PgPool::connect`、テスト冒頭で `sqlx::migrate!()`）。
 > 具体の sqlx マクロ/型は実装時に context7 で確認。`#[sqlx::test]` の利用可否も確認する。
 
-- [ ] **Step 3: 失敗を確認**
+- [x] **Step 3: 失敗を確認**
 
 Run: `docker compose run --rm runner cargo test store`
 Expected: FAIL（`store` 未実装）
 
-- [ ] **Step 4: `JobStore` を実装**（`insert_running`/`complete`/`fail`/`get`/`list`、`sqlx::query!`）。`main.rs` の起動時に `sqlx::migrate!("./migrations").run(&pool)` を実行。
+- [x] **Step 4: `JobStore` を実装**（`insert_running`/`complete`/`fail`/`get`/`list`、`sqlx::query!`）。`main.rs` の起動時に `sqlx::migrate!("./migrations").run(&pool)` を実行。
 
-- [ ] **Step 5: 通過とゲート**
+- [x] **Step 5: 通過とゲート**
 
 Run: `docker compose run --rm runner cargo test && docker compose run --rm runner cargo clippy -- -D warnings`
 Expected: PASS。
 
-- [ ] **Step 6: コミット**
+- [x] **Step 6: コミット**
 
 ```bash
 git add runner
@@ -432,16 +450,16 @@ git commit -m "feat(runner): persist jobs via sqlx (jobs table + JobStore)"
 - Produces: `struct RunSpec { target: String, n: u64, concurrency: usize }`、`struct RunResult { created: u64, conflicts: u64, attempts: u64 }`、`async fn run_load(spec: RunSpec, client: reqwest::Client, max_attempts: u64) -> RunResult`。
 - 設計: `concurrency` 個の負荷タスクが `POST {target}/users` を投げ、結果（Created/Conflict/Other）を `tokio::sync::mpsc` で**単一の集約器**へ送る。集約器が `created`/`conflicts`/`attempts` を更新し、`created >= n` か `attempts >= max_attempts` で停止信号（`tokio::sync::Notify` か `AtomicBool`）。**DB には触れない**（純ロジック）。
 
-- [ ] **Step 1: 集約ロジックの単体テストを書く**
+- [x] **Step 1: 集約ロジックの単体テストを書く**
 
 `runner/src/engine.rs` の `#[cfg(test)]`：`httpmock` で 201 を返すモックサーバを立て、`run_load(n=50, concurrency=8, max_attempts=1000)` が `created == 50` を返すことを検証。別テストで「409 を一定割合返すモック」に対し `conflicts > 0 && created == n` を検証。
 
-- [ ] **Step 2: 失敗を確認**
+- [x] **Step 2: 失敗を確認**
 
 Run: `docker compose run --rm runner cargo test engine`
 Expected: FAIL（`engine` 未実装）
 
-- [ ] **Step 3: `run_load` を実装**
+- [x] **Step 3: `run_load` を実装**
 
 要点（実装時に context7 で reqwest/tokio の最新形を確認）:
 ```rust
@@ -476,12 +494,12 @@ pub async fn run_load(spec: RunSpec, client: reqwest::Client, max_attempts: u64)
 }
 ```
 
-- [ ] **Step 4: 通過とゲート**
+- [x] **Step 4: 通過とゲート**
 
 Run: `docker compose run --rm runner cargo test && docker compose run --rm runner cargo clippy -- -D warnings`
 Expected: PASS。
 
-- [ ] **Step 5: コミット**
+- [x] **Step 5: コミット**
 
 ```bash
 git add runner
@@ -502,19 +520,19 @@ git commit -m "feat(runner): load engine (tokio + mpsc aggregator, run-until-N)"
   - `POST /runs` body `{ job_id: Uuid, target: String, n: u64, concurrency: usize }` → `insert_running` 後、`tokio::spawn` で `run_load` を実行し完了時に `store.complete(...)`。**即 202** を返す。
   - `GET /runs` → `Vec<Job>`（200）。`GET /runs/{job_id}` → `Job`（200）/404。
 
-- [ ] **Step 1: API 結合テストを書く**
+- [x] **Step 1: API 結合テストを書く**
 
 `runner/tests/api.rs`：`httpmock` のモック target を立て、`POST /runs`（小さい n）→ 202、ポーリングで `GET /runs/{job_id}` が `status=="completed"` かつ `created==n` になることを検証。
 > 実DB必須。テストは `DATABASE_URL` 前提。
 
-- [ ] **Step 2: 失敗を確認**
+- [x] **Step 2: 失敗を確認**
 
 Run: `docker compose run --rm runner cargo test --test api`
 Expected: FAIL（`/runs` 未実装）
 
-- [ ] **Step 3: `api.rs` を実装**し `main.rs` に結線（`/healthz` も維持）。`POST /runs` は `spawn` で非同期実行、`max_attempts` は `n * 4 + 10_000` 等の安全上限。
+- [x] **Step 3: `api.rs` を実装**し `main.rs` に結線（`/healthz` も維持）。`POST /runs` は `spawn` で非同期実行、`max_attempts` は `n * 4 + 10_000` 等の安全上限。
 
-- [ ] **Step 4: 通過とゲート**
+- [x] **Step 4: 通過とゲート**
 
 Run:
 ```bash
@@ -523,7 +541,7 @@ docker compose run --rm runner cargo fmt --check && docker compose run --rm runn
 ```
 Expected: すべて PASS。
 
-- [ ] **Step 5: コミット**
+- [x] **Step 5: コミット**
 
 ```bash
 git add runner
@@ -545,7 +563,7 @@ git commit -m "feat(runner): async job API (POST/GET /runs with spawned load)"
 **Interfaces:**
 - Produces: `web` コンテナが Vite dev サーバ（`5173`）でアプリ shell を配信。`/api/app/*`→app、`/api/runner/*`→runner にプロキシ。`npm run typecheck`/`lint`/`test` が緑。
 
-- [ ] **Step 1: scaffolding を生成**
+- [x] **Step 1: scaffolding を生成**
 
 Run（コンテナ内、node イメージで一時生成 or 手書き）:
 ```bash
@@ -553,7 +571,7 @@ docker run --rm -v "$PWD/web":/web -w /web node:22-slim sh -c "npm create vite@l
 ```
 > 生成物はコミット対象。`package.json` の scripts に `typecheck: "vue-tsc --noEmit"`, `lint: "eslint src"`, `test: "vitest run"` を追加。
 
-- [ ] **Step 2: プロキシを設定**
+- [x] **Step 2: プロキシを設定**
 
 `web/vite.config.ts` の `server` に:
 ```ts
@@ -566,7 +584,7 @@ server: {
 },
 ```
 
-- [ ] **Step 3: Dockerfile とサービス**
+- [x] **Step 3: Dockerfile とサービス**
 
 `web/Dockerfile`:
 ```dockerfile
@@ -579,7 +597,7 @@ CMD ["npm", "run", "dev", "--", "--host"]
 ```
 `compose.yaml` に `web` サービス（`build: ./web`、`ports: ["5173:5173"]`、`volumes: ./web:/web` と匿名 `/web/node_modules`、`depends_on: [app, runner]`）。
 
-- [ ] **Step 4: 起動とゲートを確認**
+- [x] **Step 4: 起動とゲートを確認**
 
 Run:
 ```bash
@@ -589,7 +607,7 @@ docker compose up -d --build web && sleep 3 && curl -s -o /dev/null -w "%{http_c
 ```
 Expected: typecheck/lint PASS、HTTP 200。
 
-- [ ] **Step 5: コミット**
+- [x] **Step 5: コミット**
 
 ```bash
 git add web compose.yaml
@@ -606,7 +624,7 @@ git commit -m "feat(web): scaffold Vue+Vite app with /api proxy"
 **Interfaces:**
 - Produces: `isBase62(s): boolean`, `isLen10(s): boolean`, `isSortedAfter(prev, cur): boolean`, `validateId(s): {len: boolean, charset: boolean}`, `summarize(ids: string[]): {total, valid, invalid, sortedOk}`。
 
-- [ ] **Step 1: 失敗するテストを書く**
+- [x] **Step 1: 失敗するテストを書く**
 
 `web/src/lib/validate.test.ts`:
 ```ts
@@ -631,12 +649,12 @@ describe("validate", () => {
 });
 ```
 
-- [ ] **Step 2: 失敗を確認**
+- [x] **Step 2: 失敗を確認**
 
 Run: `docker compose run --rm web npm run test`
 Expected: FAIL（`validate` 未実装）
 
-- [ ] **Step 3: `validate.ts` を実装**
+- [x] **Step 3: `validate.ts` を実装**
 
 ```ts
 const BASE62 = /^[0-9A-Za-z]+$/;
@@ -657,12 +675,12 @@ export function summarize(ids: string[]) {
 }
 ```
 
-- [ ] **Step 4: 通過を確認**
+- [x] **Step 4: 通過を確認**
 
 Run: `docker compose run --rm web npm run test`
 Expected: PASS。
 
-- [ ] **Step 5: コミット**
+- [x] **Step 5: コミット**
 
 ```bash
 git add web/src/lib/validate.ts web/src/lib/validate.test.ts
@@ -681,9 +699,9 @@ git commit -m "feat(web): id validation pure functions with tests"
 - Consumes: `validate.ts`、`/api/app` の `POST /users`・`GET /users`。
 - Produces: `api.ts` に `createUser(name): Promise<UserRead>`, `listUsers(limit, offset): Promise<UserRead[]>`。UI は単発発行ボタン、発行ID一覧、妥当性バッジ（10桁/base62/ソート整合）と未達件数。
 
-- [ ] **Step 1: api クライアントを実装**（`fetch("/api/app/users", ...)`）。`UserRead` 型を定義。
-- [ ] **Step 2: `IssuePanel.vue`**（名前入力＋発行ボタン→`createUser`→一覧更新）と **`UserTable.vue`**（`listUsers`＋`summarize` でバッジ・件数表示）を実装、`App.vue` に組み込む。
-- [ ] **Step 3: 手動確認**
+- [x] **Step 1: api クライアントを実装**（`fetch("/api/app/users", ...)`）。`UserRead` 型を定義。
+- [x] **Step 2: `IssuePanel.vue`**（名前入力＋発行ボタン→`createUser`→一覧更新）と **`UserTable.vue`**（`listUsers`＋`summarize` でバッジ・件数表示）を実装、`App.vue` に組み込む。
+- [x] **Step 3: 手動確認**
 
 Run:
 ```bash
@@ -693,7 +711,7 @@ docker compose down
 ```
 Expected: 発行が成功し、妥当なIDが緑バッジで一覧表示。
 
-- [ ] **Step 4: ゲート＆コミット**
+- [x] **Step 4: ゲート＆コミット**
 
 ```bash
 docker compose run --rm web npm run typecheck && docker compose run --rm web npm run lint
@@ -863,6 +881,61 @@ Expected: すべて PASS。
 git add README.md
 git commit -m "docs: streamline README to onboard via tutorial"
 ```
+
+---
+
+### Task 15: 全依存ライブラリの安全な最新化（Rust Edition 含む）
+
+> **位置づけ**: 全機能（Task 1〜14）完了後に実施する仕上げタスク。「相互依存関係を考慮したうえで安全に利用できる最大限の最新版」へ全言語のライブラリを引き上げ、全ゲート緑を維持する。最新版の確認は **context7 MCP**（利用可・課金なし）と各エコシステムの公式手段で行う。
+
+**Files:**
+- Modify: `pyproject.toml`, `uv.lock`（app/Python）
+- Modify: `runner/Cargo.toml`（`edition` と各 crate）, `runner/Cargo.lock`
+- Modify: `web/package.json`, `web/package-lock.json`（front）
+- Modify: `docs/tutorial/package.json`, `docs/tutorial/package-lock.json`（VitePress; Task 12 完了後に存在）
+
+**方針（KISS/YAGNI/安全第一）:**
+- **安全な最大化**: メジャー含め最新へ寄せるが、相互依存で破綻するもの・stable で未提供のもの・他依存が要求する範囲を超えるものは上げない。各言語のゲートが緑であることが「安全」の定義。
+- **言語横断は独立**: app / runner / web / docs はそれぞれ独立に更新（直交性）。1 サービスずつ「更新→ゲート→コミット」を回し、破壊時の切り分けを容易にする。
+- すべて**コンテナ内**で実行。
+
+- [ ] **Step 1: app（Python）**
+
+`docker compose run --rm app sh -c "uv lock --upgrade"` で lock を最新化（pyproject の制約内で最大化）。制約自体を上げたい場合は pyproject の下限/上限を見直してから `uv lock --upgrade`。その後ゲート:
+```bash
+docker compose run --rm app uv run ruff check . && docker compose run --rm app uv run ruff format --check . && docker compose run --rm app uv run mypy app && docker compose run --rm app uv run pytest -q
+```
+緑を確認してコミット（`git add pyproject.toml uv.lock`）。
+
+- [ ] **Step 2: runner（Rust）— crate と Edition**
+
+まず crate を最新化: `docker compose run --rm runner cargo update`（semver 範囲内）。さらに **Cargo.toml の各依存のメジャー/マイナー指定を最新安定へ引き上げ**（context7 で axum/sqlx/tokio/reqwest/uuid/chrono/tracing/httpmock/tower の最新安定を確認し、相互互換を保って固定）。**Edition は 2021→2024** へ（`edition = "2024"`; Rust 2024 は stable）。Edition 移行は `cargo fix --edition` を活用し、手動修正が要る箇所（2024 の規則変更: unsafe extern、prelude 変更、クロージャキャプチャ等）を潰す。ゲート:
+```bash
+docker compose up -d db
+docker compose run --rm runner cargo fmt --check && docker compose run --rm runner cargo clippy -- -D warnings && docker compose run --rm runner cargo test
+```
+ベースイメージ `rust:1-slim` が edition 2024 を解釈できる版か確認（必要なら Dockerfile の Rust バージョンも引き上げ）。緑を確認してコミット（`git add runner`）。
+
+- [ ] **Step 3: web（Vue/Vite）**
+
+`docker compose run --rm web sh -c "npm update"` で semver 範囲内更新。メジャー更新（vite/vue/vitest/eslint/typescript-eslint 等）は context7 で互換を確認しつつ `package.json` のレンジを引き上げ→`npm install`→lock 更新。`npm ci` を使う Dockerfile があるため **lock を必ず更新・コミット**。ゲート:
+```bash
+docker compose run --rm web npm run typecheck && docker compose run --rm web npm run lint && docker compose run --rm web npm run test
+docker compose build web   # npm ci が新 lock で通ることを確認
+```
+緑を確認してコミット（`git add web/package.json web/package-lock.json`）。
+
+- [ ] **Step 4: docs（VitePress, Task 12 完了後のみ）**
+
+`docs/tutorial` で同様に `npm update`＋メジャーは互換確認のうえ引き上げ→lock 更新。`docs:build` が通ることを確認してコミット。
+
+- [ ] **Step 5: 全ゲート最終確認（Task 14 の最終ゲートと同等を再走）**
+
+3〜4 言語すべてのゲートを通しで緑にし、e2e（Task 11 の衝突体験）が依然成立することを確認。
+
+- [ ] **Step 6: コミット/まとめ**
+
+各 Step で個別コミット済みなら、最後に差分の要約を残す（更新前後の主要バージョン表を report かコミット本文に）。
 
 ---
 
