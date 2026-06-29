@@ -53,4 +53,3 @@ ID_STRATEGY=stage1 docker compose -f compose.yaml -f compose.demo.yaml up -d --b
 - ここで使う `stage1` は、**サーバー を区別しない素朴な実装**です。これを **1台（`app`）** と、横に **並べた3台（`app1`〜`app3`＋`lb`）** の両方で起動しています。
 
 次の章では、この3台構成に **大量のアクセス** すると何が起きるかを観測しましょう。
-サーバー
