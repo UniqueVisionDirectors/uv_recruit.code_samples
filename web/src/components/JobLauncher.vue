@@ -37,13 +37,13 @@ async function launch(): Promise<void> {
 <template>
   <section class="card job-launcher">
     <h2>ジョブ起動</h2>
-    <p class="hint">大量のID発行を並列で実行し、衝突回数（conflict_count）を観測します。</p>
+    <p class="hint">大量のID発行を並列で実行し、衝突回数（conflict_count）を観測します。<br>1台（app）はどれだけ並列でも衝突せず、3台（lb）で初めて衝突が現れます。</p>
     <form class="launch-form" @submit.prevent="launch">
       <label class="field">
         <span>ターゲット</span>
         <select v-model="target" :disabled="loading">
-          <option value="http://app:8000">app</option>
-          <option value="http://lb:8080">lb</option>
+          <option value="http://app:8000">app（1台）</option>
+          <option value="http://lb:8080">lb（3台・LB経由）</option>
         </select>
       </label>
       <label class="field">

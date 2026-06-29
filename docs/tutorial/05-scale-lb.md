@@ -43,13 +43,14 @@ graph LR
 
 ## デモ環境を立ち上げる
 
-3台構成を実際に動かしてみましょう。次のコマンドで、**LB ＋ app 3台 ＋ web ＋ 負荷ランナー** を起動します。
+3台構成を実際に動かしてみましょう。次のコマンドで、**LB ＋ app 3台 ＋ web ＋ 負荷ランナー** を起動します。<br>
+あわせて、比較用に **1台だけの `app`** も同じ実装で起動しておきます（次章で「1台」と「3台」を見比べます）。
 
 ```bash
-ID_STRATEGY=stage1 docker compose -f compose.yaml -f compose.demo.yaml up -d --build db app1 app2 app3 lb runner web
+ID_STRATEGY=stage1 docker compose -f compose.yaml -f compose.demo.yaml up -d --build db app app1 app2 app3 lb runner web
 ```
 
-- ここで使う `stage1` は、**サーバー を区別しない素朴な実装**を3台に並べたものです。
+- ここで使う `stage1` は、**サーバー を区別しない素朴な実装**です。これを **1台（`app`）** と、横に **並べた3台（`app1`〜`app3`＋`lb`）** の両方で起動しています。
 
 次の章では、この3台構成に **大量のアクセス** すると何が起きるかを観測しましょう。
 サーバー
